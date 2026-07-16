@@ -1,0 +1,19 @@
+[Unit]
+Description=Phrase-Lock PLP Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/phraselock/custom
+ExecStart=/usr/bin/java -jar plp-custom.jar
+Restart=on-failure
+TimeoutStopSec=1
+KillSignal=SIGKILL
+
+User=phraselock
+
+StandardOutput=append:/var/log/plp-custom.log
+StandardError=append:/var/log/plp-custom.log
+
+[Install]
+WantedBy=multi-user.target

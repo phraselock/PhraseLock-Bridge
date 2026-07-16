@@ -1,0 +1,29 @@
+# ============================================================
+# Central PKI configuration
+#
+# Single place to maintain CN/IP and subject data. Read by common.sh and
+# shared by the wrapper scripts (make_ca.sh, make_server.sh,
+# make_client_frp.sh).
+# ============================================================
+
+[ metadata ]
+
+# CN of the server/device. The CA file basename (ca.<dname>) and the
+# server certificate use the same value. IP addresses automatically get
+# an IP SAN, anything else a DNS SAN.
+dname      = [Enter a valid domain or IP address]
+
+# Path to the CA directory (key + certificate of the root CA)
+ca_dir     = ./CA
+
+# Crypto parameters
+ec_curve   = prime256v1
+duration   = 3650
+
+# Subject components (shared by CA/server/client certificates)
+subj_c     = AT
+subj_st    = SZG
+subj_l     = Salzburg
+subj_ou    = R&D
+subj_o     = iPoxo IT GmbH
+subj_email = info@phraselock.at

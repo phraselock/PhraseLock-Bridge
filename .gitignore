@@ -1,0 +1,20 @@
+# Build artifacts — published as GitHub Release assets, not tracked here.
+*.tar.xz
+
+# Build output of the separate plp-custom project, not source of this repo.
+# Drop the current plp-custom-*.jar in here manually before running
+# build-tars.sh — same pattern as certs-in/, a required input this repo
+# doesn't produce itself.
+PLPServer/opt/phraselock/custom/*.jar
+
+# macOS cruft
+.DS_Store
+._*
+
+# Defense in depth, matching build-tars.sh's own guard: these directories
+# must never contain real content in the source tree. CA/ only ever gets
+# created by make_ca.sh at install time; certs-in/ is where an operator
+# drops certificates in manually, right before running install.sh.
+**/pki-scripts/*/CA/*
+**/certs-in/*
+!**/certs-in/.gitkeep

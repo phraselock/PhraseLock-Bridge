@@ -1,0 +1,21 @@
+bindPort = 7000
+
+auth.method = "token"
+auth.token = "__AUTH_TOKEN__"
+
+transport.tls.force = true
+transport.tls.certFile = "/etc/frp/certs/server.crt"
+transport.tls.keyFile = "/etc/frp/certs/server.key"
+transport.tls.trustedCaFile = "/etc/frp/certs/ca.crt"
+
+# Single-tenant setup: this proxy server serves exactly the one customer who
+# ran this installation, so only their two fixed ports are allowed — not a
+# range. Anyone wanting to run a shared, multi-tenant proxy is on their own.
+allowPorts = [
+  { single = __HTTPS_PORT__ },
+  { single = __MQTT_PORT__ }
+]
+
+log.to = "/var/log/frps.log"
+log.level = "debug"
+log.maxDays = 3

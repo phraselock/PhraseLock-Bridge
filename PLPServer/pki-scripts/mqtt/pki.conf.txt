@@ -1,0 +1,47 @@
+# ============================================================
+# Central PKI configuration
+#
+# Single place to maintain CN/IP and subject data. Read by common.sh and
+# shared by all three wrapper scripts (make_ca.sh, make_client.sh).
+# ============================================================
+
+[ metadata ]
+
+# Base name for multi-tenant setups with several Mosquitto instances on
+# different ports (one port = one tenant = its own CA/server/client
+# certificate chain). Instead of a fixed "dname", "dname_base" is used
+# here; the resulting dname is "<dname_base>_<port>" and is built by the
+# scripts at runtime – the port MUST therefore be passed as the first
+# argument on every call to make_ca.sh / make_client.sh.
+# Example: port 8883 -> dname = mqtt_8883
+dname_base = mqtt
+
+# Path to the CA directory (key + certificate of the root CA)
+ca_dir     = ./CA
+
+# Crypto parameters
+ec_curve   = prime256v1
+duration   = 3650
+
+# Subject components (shared by CA/client certificates)
+subj_c     = AT
+subj_st    = SZG
+subj_l     = Salzburg
+subj_ou    = R&D
+subj_o     = iPoxo IT GmbH
+subj_email = info@phraselock.at
+
+# OIDs for extendedKeyUsage on client certificates. Two different
+# purposes, hence two different values:
+#
+# - client_eku_oid_bootstrap: for the ONE .p12 that is generated upfront
+#   and manually installed on client/server. Its only purpose is a
+#   one-time authentication against an API, which then issues a dynamic
+#   client certificate (an alternative to TOFU). Used by make_client.sh
+#   by default.
+# - client_eku_oid_dynamic: for the client certificates issued
+#   dynamically at runtime via the API afterwards. NOT used by
+#   make_client.sh, but by the server-side issuance code – kept here only
+#   as reference/documentation.
+client_eku_oid_bootstrap = 1.3.6.1.4.1.59269.100.14
+client_eku_oid_dynamic   = 1.3.6.1.4.1.59269.100.10

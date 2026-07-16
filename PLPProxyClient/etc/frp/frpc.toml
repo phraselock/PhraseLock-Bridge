@@ -1,0 +1,28 @@
+serverAddr = "__SERVER_ADDR__"
+serverPort = 7000
+
+auth.method = "token"
+auth.token = "__AUTH_TOKEN__"
+
+transport.tls.enable = true
+transport.tls.certFile = "/etc/frp/certs/client.crt"
+transport.tls.keyFile = "/etc/frp/certs/client.key"
+transport.tls.trustedCaFile = "/etc/frp/certs/ca.crt"
+
+log.to = "/var/log/frpc.log"
+log.level = "info"
+log.maxDays = 3
+
+[[proxies]]
+name = "https"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 443
+remotePort = __HTTPS_PORT__
+
+[[proxies]]
+name = "mqtt"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8883
+remotePort = __MQTT_PORT__
