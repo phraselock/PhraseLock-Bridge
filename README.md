@@ -202,9 +202,9 @@ flowchart TD
 
 ## Download
 
-- [PLPServer.tar.xz](#) — customer device (Raspberry Pi or similar)
-- [PLPProxyServer.tar.xz](#) — central proxy (only needed without a fixed IP)
-- [PLPProxyClient.tar.xz](#) — customer device, alongside `PLPServer` (only needed without a fixed IP)
+- [PLPServer-0.1.0.tar.xz](https://github.com/Phrase-Lock/PhraseLock-Bridge/releases/download/v0.1.0/PLPServer-0.1.0.tar.xz) — customer device (Raspberry Pi or similar)
+- [PLPProxyServer-0.1.0.tar.xz](https://github.com/Phrase-Lock/PhraseLock-Bridge/releases/download/v0.1.0/PLPProxyServer-0.1.0.tar.xz) — central proxy (only needed without a fixed IP)
+- [PLPProxyClient-0.1.0.tar.xz](https://github.com/Phrase-Lock/PhraseLock-Bridge/releases/download/v0.1.0/PLPProxyClient-0.1.0.tar.xz) — customer device, alongside `PLPServer` (only needed without a fixed IP)
 
 ## PLPServer
 
