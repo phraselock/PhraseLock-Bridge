@@ -4,6 +4,8 @@ Interactive, native installers for deploying the Phrase-Lock
 backend and its optional reverse-tunnel proxy. Each installer is a
 self-contained `install.sh` driven by `whiptail` (or `dialog` on macOS, for
 local testing) — plain question/confirm dialogs, no manual config editing.
+**PhraseLock-bridge** is required if you want run your own Keepass Installation
+as a backend solution.  
 
 ## Goal
 
