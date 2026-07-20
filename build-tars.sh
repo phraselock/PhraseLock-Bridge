@@ -1,8 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# Builds the three distributable tar.xz packages from this directory's
+# Builds the three distributable tar.gz packages from this directory's
 # PLPServer/PLPProxyServer/PLPProxyClient source trees.
+#
+# gzip instead of xz: some minimal/headless images (e.g. Raspberry Pi OS
+# Lite on a Pi 5) don't have xz-utils installed, which broke extraction
+# there — gzip support is universal.
 #
 # Usage: ./build-tars.sh [version]
 #   [version]  optional, e.g. "1.0.0" — defaults to today's date (YYYYMMDD)
@@ -43,9 +47,9 @@ EXCLUDES=(
 )
 
 for PROJECT in PLPServer PLPProxyServer PLPProxyClient; do
-  TARBALL="${PROJECT}-${VERSION}.tar.xz"
+  TARBALL="${PROJECT}-${VERSION}.tar.gz"
   echo "Building ${TARBALL} ..."
-  tar "${EXCLUDES[@]}" -cJf "$TARBALL" "$PROJECT"
+  tar "${EXCLUDES[@]}" -czf "$TARBALL" "$PROJECT"
   echo "  -> $(pwd)/${TARBALL}"
 done
 
