@@ -308,7 +308,44 @@ CUSTOM_JAR=$(basename "$(ls "$CUSTOM_SRC_DIR"/plp-custom-*.jar)")
 cp "$CUSTOM_SRC_DIR/$CUSTOM_JAR" "$CUSTOM_DIR/$CUSTOM_JAR"
 ln -sf "$CUSTOM_JAR" "$CUSTOM_DIR/plp-custom.jar"
 
+# plp-core JWT bearer token — the one value in application.properties that's
+# specific to this customer. The public key (pl.core.jwt.ec.pub.x/y) and
+# pl.core.url are pinned in the template and must not change here. Only
+# asked once; an existing real token is left untouched on a repeated run.
+#
+# TODO: plp-core is getting an API endpoint to issue this token directly
+# during installation, e.g.:
+#
+#   PL_CORE_JWT=$(curl -fsS -X POST "https://phraselock.net/api/issue-token" \
+#     -d "org=<customer-org>" -d "ip=${DNAME}")
+#
+# Not implemented yet — the endpoint doesn't exist on plp-core yet. Manual
+# entry below is the only path for now; swap it out once the endpoint ships.
+EXISTING_JWT=""
+if [[ -f "$CUSTOM_DIR/application.properties" ]]; then
+  EXISTING_JWT=$(grep -E '^pl\.core\.jwt=' "$CUSTOM_DIR/application.properties" | cut -d= -f2-)
+fi
+
+if [[ -z "$EXISTING_JWT" || "$EXISTING_JWT" == "<bearer-token>" ]]; then
+  if ! PL_CORE_JWT=$("$DIALOG" --title "PLP Server Setup" --passwordbox \
+    "PhraseLock license bearer token (issued by plp-core for this customer):" 10 60 3>&1 1>&2 2>&3); then
+    echo "Aborted (Cancel/Esc)." >&2
+    exit 1
+  fi
+  if [[ -z "$PL_CORE_JWT" ]]; then
+    "$DIALOG" --title "PLP Server Setup" --msgbox "Bearer token must not be empty." 8 60
+    exit 1
+  fi
+  JWT_STATUS="plp-core bearer token set."
+  JWT_NOTE="$PL_CORE_JWT"
+else
+  PL_CORE_JWT="$EXISTING_JWT"
+  JWT_STATUS="plp-core bearer token already set — left unchanged."
+  JWT_NOTE="unchanged from when it was first set — not re-displayed here"
+fi
+
 cp "$CUSTOM_SRC_DIR/application.properties" "$CUSTOM_DIR/application.properties"
+sed -i "s|^pl\.core\.jwt=.*|pl.core.jwt=${PL_CORE_JWT}|" "$CUSTOM_DIR/application.properties"
 
 # CA private keys plp-custom needs to issue certificates at runtime: the
 # server CA's key (bootstrap client certs) and the MQTT CA's key+cert
@@ -339,6 +376,7 @@ sed -e "s|__CLIENT_P12_PATH__|${CLIENT_P12_PATH}|g" \
 sed -e "s|__P12_PASSWORD__|${P12_PASSWORD_NOTE}|g" \
     -e "s|__MQTT_USER__|${MQTT_USER}|g" \
     -e "s|__MQTT_PASSWORD__|${MQTT_PASSWORD_NOTE}|g" \
+    -e "s|__PL_CORE_JWT__|${JWT_NOTE}|g" \
     "$SCRIPT_DIR/credentials.txt" > /opt/phraselock/credentials.txt
 chmod 600 /opt/phraselock/credentials.txt
 
@@ -359,6 +397,7 @@ ${MQTT_PASSWD_STATUS}
 
 ${JAVA_STATUS}
 ${CUSTOM_STATUS}
+${JWT_STATUS}
 
 See /opt/phraselock/README.txt for how to import the client certificate,
 and /opt/phraselock/credentials.txt for its password." 28 78
