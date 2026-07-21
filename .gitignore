@@ -18,3 +18,7 @@ PLPServer/opt/phraselock/custom/*.jar
 **/pki-scripts/*/CA/*
 **/certs-in/*
 !**/certs-in/.gitkeep
+
+# Maintainer-only release tooling — kept local, not published.
+/build-tars.sh
+/uploadRelease.sh
