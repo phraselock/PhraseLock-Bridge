@@ -310,38 +310,55 @@ ln -sf "$CUSTOM_JAR" "$CUSTOM_DIR/plp-custom.jar"
 
 # plp-core JWT bearer token — the one value in application.properties that's
 # specific to this customer. The public key (pl.core.jwt.ec.pub.x/y) and
-# pl.core.url are pinned in the template and must not change here. Only
-# asked once; an existing real token is left untouched on a repeated run.
+# pl.core.url are pinned in the template and must not change here.
 #
-# TODO: plp-core is getting an API endpoint to issue this token directly
-# during installation, e.g.:
-#
-#   PL_CORE_JWT=$(curl -fsS -X POST "https://phraselock.net/api/issue-token" \
-#     -d "org=<customer-org>" -d "ip=${DNAME}")
-#
-# Not implemented yet — the endpoint doesn't exist on plp-core yet. Manual
-# entry below is the only path for now; swap it out once the endpoint ships.
+# Auto-fetched from plp-core's token API on every run, since these tokens
+# are short-lived (a few days) by design. A longer-lived token is only
+# issued to customers who contact PhraseLock directly — once one of those
+# is in place (detected by its JWT "type" claim not being "temporary"),
+# it's left untouched instead of being silently overwritten by a fresh
+# short-lived one on a repeat install.
+command -v curl >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl; }
+
+base64url_decode() {
+  local seg="$1"
+  seg="${seg//-/+}"; seg="${seg//_//}"
+  case $(( ${#seg} % 4 )) in
+    2) seg="${seg}==" ;;
+    3) seg="${seg}=" ;;
+  esac
+  echo "$seg" | base64 -d 2>/dev/null
+}
+
 EXISTING_JWT=""
 if [[ -f "$CUSTOM_DIR/application.properties" ]]; then
   EXISTING_JWT=$(grep -E '^pl\.core\.jwt=' "$CUSTOM_DIR/application.properties" | cut -d= -f2-)
 fi
 
-if [[ -z "$EXISTING_JWT" || "$EXISTING_JWT" == "<bearer-token>" ]]; then
-  if ! PL_CORE_JWT=$("$DIALOG" --title "PLP Server Setup" --passwordbox \
-    "PhraseLock license bearer token (issued by plp-core for this customer):" 10 60 3>&1 1>&2 2>&3); then
-    echo "Aborted (Cancel/Esc)." >&2
-    exit 1
-  fi
-  if [[ -z "$PL_CORE_JWT" ]]; then
-    "$DIALOG" --title "PLP Server Setup" --msgbox "Bearer token must not be empty." 8 60
-    exit 1
-  fi
-  JWT_STATUS="plp-core bearer token set."
-  JWT_NOTE="$PL_CORE_JWT"
-else
+EXISTING_JWT_TYPE=""
+if [[ -n "$EXISTING_JWT" && "$EXISTING_JWT" != "<bearer-token>" ]]; then
+  EXISTING_JWT_TYPE=$(base64url_decode "$(echo "$EXISTING_JWT" | cut -d. -f2)" \
+    | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
+fi
+
+if [[ -n "$EXISTING_JWT" && "$EXISTING_JWT" != "<bearer-token>" && "$EXISTING_JWT_TYPE" != "temporary" ]]; then
   PL_CORE_JWT="$EXISTING_JWT"
-  JWT_STATUS="plp-core bearer token already set — left unchanged."
+  JWT_STATUS="plp-core bearer token already set (not a temporary one) — left unchanged."
   JWT_NOTE="unchanged from when it was first set — not re-displayed here"
+else
+  JWT_RESPONSE=$(curl -fsS "https://phraselock.net/api/plp/v1/validate/getjwt") || JWT_RESPONSE=""
+  PL_CORE_JWT=$(echo "$JWT_RESPONSE" | grep -o '"jwttoken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
+  JWT_DAYS=$(echo "$JWT_RESPONSE" | grep -o '"days"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
+
+  if [[ -z "$PL_CORE_JWT" ]]; then
+    "$DIALOG" --title "PLP Server Setup" --msgbox \
+"Could not fetch a bearer token from plp-core
+(https://phraselock.net/api/plp/v1/validate/getjwt).
+Check this server's internet connection and re-run install.sh." 10 70
+    exit 1
+  fi
+  JWT_STATUS="plp-core bearer token fetched automatically (valid ~${JWT_DAYS:-a few} days — contact PhraseLock for a longer-lived one)."
+  JWT_NOTE="$PL_CORE_JWT"
 fi
 
 cp "$CUSTOM_SRC_DIR/application.properties" "$CUSTOM_DIR/application.properties"
