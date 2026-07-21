@@ -205,8 +205,8 @@ flowchart TD
 ## Download
 
 - [PLPServer-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPServer-0.1.2.tar.gz) — customer device (Raspberry Pi or similar)
-- [PLPProxyServer-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.1/PLPProxyServer-0.1.2.tar.gz) — central proxy (only needed without a fixed IP)
-- [PLPProxyClient-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.1/PLPProxyClient-0.1.2.tar.gz) — customer device, alongside `PLPServer` (only needed without a fixed IP)
+- [PLPProxyServer-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyServer-0.1.2.tar.gz) — central proxy (only needed without a fixed IP)
+- [PLPProxyClient-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyClient-0.1.2.tar.gz) — customer device, alongside `PLPServer` (only needed without a fixed IP)
 
 On a headless server, download and extract directly instead of via browser:
 
@@ -216,11 +216,11 @@ curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.
 tar xzf PLPServer-0.1.2.tar.gz
 
 # PLPProxyServer
-curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.1/PLPProxyServer-0.1.2.tar.gz
+curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyServer-0.1.2.tar.gz
 tar xzf PLPProxyServer-0.1.2.tar.gz
 
 # PLPProxyClient
-curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.1/PLPProxyClient-0.1.2.tar.gz
+curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyClient-0.1.2.tar.gz
 tar xzf PLPProxyClient-0.1.2.tar.gz
 ```
 
