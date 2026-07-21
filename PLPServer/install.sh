@@ -371,6 +371,8 @@ CUSTOM_STATUS="plp-custom installed (${CUSTOM_JAR}) and restarted, listening on 
 # the actual secrets and stays root-only.
 sed -e "s|__CLIENT_P12_PATH__|${CLIENT_P12_PATH}|g" \
     -e "s|__MQTT_USER__|${MQTT_USER}|g" \
+    -e "s|__DNAME__|${DNAME}|g" \
+    -e "s|__SSH_USER__|$(whoami)|g" \
     "$SCRIPT_DIR/README.txt" > /opt/phraselock/README.txt
 
 sed -e "s|__P12_PASSWORD__|${P12_PASSWORD_NOTE}|g" \

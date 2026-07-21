@@ -28,6 +28,12 @@ Step 3 — Choose a transport method you trust for this copy (e.g. scp over
   purpose: whoever controls this transport step controls the resulting
   trust relationship.
 
+  Easiest: run the ready-made scp commands shown at the end of the
+  PLPProxyServer installation (also in its README.txt) — they already have
+  the right paths filled in. Works the same on Mac, Linux and Windows:
+  Windows 10/11 ships scp.exe out of the box (in PowerShell, use "scp.exe"
+  explicitly — plain "scp" may be aliased to something else).
+
     - ca.<...>.pem is a public certificate — no secret, but it must not be
       swapped for a different one in transit, or this device would end up
       trusting the wrong proxy server.

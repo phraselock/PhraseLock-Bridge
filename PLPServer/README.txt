@@ -14,6 +14,14 @@ This needs to be imported on any PC/Mac that should be able to call this
 server's /api/ (e.g. an admin's or technician's machine). Password: see
 credentials.txt next to this file.
 
+Fetch it via SCP — from the PC/Mac/Windows machine that needs it (Windows
+10/11 ships scp.exe out of the box; in PowerShell use "curl.exe"/"scp.exe"
+explicitly, since plain "curl"/"scp" may be aliased to something else):
+
+    scp __SSH_USER__@__DNAME__:__CLIENT_P12_PATH__ .
+
+(Adjust the username if you don't connect as __SSH_USER__.)
+
 Importing on Windows:
   - Double-click the .p12 file, or import via certmgr.msc.
   - Store location: "Current User" — not "Local Machine". Current User

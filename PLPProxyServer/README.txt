@@ -29,6 +29,17 @@ Step 1 — Copy exactly these three files...
   swapped for a different one in transit, or the client would end up
   trusting the wrong proxy server.
 
+  Run these FROM the client device (PC/Mac/Windows — Windows 10/11 ships
+  scp.exe out of the box; in PowerShell use "scp.exe" explicitly, since
+  plain "scp" may be aliased to something else), into PLPProxyClient's
+  certs-in/ folder:
+
+    scp __SSH_USER__@__DNAME__:__CLIENT_OUT_DIR__/__CLIENT_NAME__.crt certs-in/
+    scp __SSH_USER__@__DNAME__:__CLIENT_OUT_DIR__/__CLIENT_NAME__.key certs-in/
+    scp __SSH_USER__@__DNAME__:__PKI_SERVER_DIR__/CA/ca.__DNAME__.pem certs-in/
+
+  (Adjust the username if you don't connect as __SSH_USER__.)
+
 Step 2 — The client also needs this server's auth.token — see
   credentials.txt next to this file.
 

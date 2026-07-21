@@ -219,6 +219,7 @@ sed -e "s|__CLIENT_OUT_DIR__|${CLIENT_OUT_DIR}|g" \
     -e "s|__CLIENT_NAME__|${CLIENT_NAME}|g" \
     -e "s|__PKI_SERVER_DIR__|${PKI_SERVER_DIR}|g" \
     -e "s|__DNAME__|${DNAME}|g" \
+    -e "s|__SSH_USER__|$(whoami)|g" \
     "$SCRIPT_DIR/README.txt" > /etc/frp/README.txt
 
 sed "s|__AUTH_TOKEN__|${AUTH_TOKEN}|g" \
@@ -242,10 +243,10 @@ frps installed and restarted, listening on port 7000.
 ${NGINX_STATUS}
 
 ${CLIENT_CERT_STATUS}
-Copy these 3 files to the client's certs-in/:
-  ${CLIENT_OUT_DIR}/${CLIENT_NAME}.crt
-  ${CLIENT_OUT_DIR}/${CLIENT_NAME}.key
-  ${PKI_SERVER_DIR}/CA/ca.${DNAME}.pem
+From the client device, run:
+  scp $(whoami)@${DNAME}:${CLIENT_OUT_DIR}/${CLIENT_NAME}.crt certs-in/
+  scp $(whoami)@${DNAME}:${CLIENT_OUT_DIR}/${CLIENT_NAME}.key certs-in/
+  scp $(whoami)@${DNAME}:${PKI_SERVER_DIR}/CA/ca.${DNAME}.pem certs-in/
 
 See /etc/frp/README.txt for details and /etc/frp/credentials.txt for the
 auth.token." 32 90
