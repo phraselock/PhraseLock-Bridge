@@ -108,7 +108,7 @@ certificate/key never has to exist twice.
 │   └── <hash>.0 → /etc/nginx/certs/client_ca/mqtt_8883/ca.mqtt_8883.pem
 └── .passwd_8883
 
-/etc/systemd/system/plp-custom.service
+/etc/systemd/system/plp-custom.service → /opt/phraselock/custom/plp-custom.service
 ```
 
 **PLPProxyServer** — the central proxy (only needed without a fixed IP):
@@ -202,27 +202,18 @@ flowchart TD
   cancelling an interactive prompt aborts with a clear message instead of
   silently exiting.
 
-## Download
-
-- [PLPServer-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPServer-0.1.2.tar.gz) — customer device (Raspberry Pi or similar)
-- [PLPProxyServer-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyServer-0.1.2.tar.gz) — central proxy (only needed without a fixed IP)
-- [PLPProxyClient-0.1.2.tar.gz](https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyClient-0.1.2.tar.gz) — customer device, alongside `PLPServer` (only needed without a fixed IP)
-
-On a headless server, download and extract directly instead of via browser:
+## Installation
 
 ```bash
-# PLPServer
-curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPServer-0.1.2.tar.gz
-tar xzf PLPServer-0.1.2.tar.gz
-
-# PLPProxyServer
-curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyServer-0.1.2.tar.gz
-tar xzf PLPProxyServer-0.1.2.tar.gz
-
-# PLPProxyClient
-curl -LO https://github.com/phraselock/PhraseLock-Bridge/releases/download/v0.1.2/PLPProxyClient-0.1.2.tar.gz
-tar xzf PLPProxyClient-0.1.2.tar.gz
+curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh -o install.sh
+sudo bash install.sh
 ```
+
+The bootstrap installer fetches the latest release from GitHub, asks which
+component to install (PLPServer / PLPProxyServer / PLPProxyClient), and hands
+off to that package's own guided `install.sh`.
+
+Individual tarballs for the [latest release](https://github.com/phraselock/PhraseLock-Bridge/releases/latest) are also available if you prefer to download manually.
 
 ## PLPServer
 
