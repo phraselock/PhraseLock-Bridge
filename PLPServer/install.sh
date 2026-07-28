@@ -165,6 +165,8 @@ cp "$SITES_SRC_DIR/silent-drop.conf" /etc/nginx/sites-available/silent-drop.conf
 ln -sf /etc/nginx/sites-available/phraselock.conf /etc/nginx/sites-enabled/phraselock.conf
 ln -sf /etc/nginx/sites-available/silent-drop.conf  /etc/nginx/sites-enabled/silent-drop.conf
 
+mkdir -p /etc/nginx/phraselock.d
+
 nginx -t
 systemctl reload nginx 2>/dev/null || systemctl restart nginx
 
