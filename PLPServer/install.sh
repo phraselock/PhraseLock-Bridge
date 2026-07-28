@@ -374,7 +374,7 @@ chown -R phraselock:phraselock "$CUSTOM_DIR"
 chmod 600 "$CUSTOM_DIR/certs/CA/"*.key
 
 cp "$CUSTOM_SRC_DIR/plp-custom.service" "$CUSTOM_DIR/plp-custom.service"
-cp "$CUSTOM_SRC_DIR/plp-custom.service" /etc/systemd/system/plp-custom.service
+ln -sf "$CUSTOM_DIR/plp-custom.service" /etc/systemd/system/plp-custom.service
 
 systemctl daemon-reload
 systemctl enable plp-custom >/dev/null 2>&1 || true
