@@ -338,7 +338,7 @@ fi
 EXISTING_JWT_TYPE=""
 if [[ -n "$EXISTING_JWT" && "$EXISTING_JWT" != "<bearer-token>" ]]; then
   EXISTING_JWT_TYPE=$(base64url_decode "$(echo "$EXISTING_JWT" | cut -d. -f2)" \
-    | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
+    | (grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' || true) | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
 fi
 
 if [[ -n "$EXISTING_JWT" && "$EXISTING_JWT" != "<bearer-token>" && "$EXISTING_JWT_TYPE" != "temporary" ]]; then
