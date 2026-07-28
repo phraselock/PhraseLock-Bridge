@@ -204,14 +204,22 @@ flowchart TD
 
 ## Installation
 
+Each component has its own one-liner. Run the right one on the right machine:
+
+**PLPServer** — customer device (Raspberry Pi or Linux server with a fixed IP):
 ```bash
-curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh -o install.sh
-sudo bash install.sh
+curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh | sudo bash -s PLPServer
 ```
 
-The bootstrap installer fetches the latest release from GitHub, asks which
-component to install (PLPServer / PLPProxyServer / PLPProxyClient), and hands
-off to that package's own guided `install.sh`.
+**PLPProxyServer** — central proxy VPS (only needed without a fixed IP):
+```bash
+curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh | sudo bash -s PLPProxyServer
+```
+
+**PLPProxyClient** — customer device tunnel client, alongside PLPServer (only needed without a fixed IP):
+```bash
+curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh | sudo bash -s PLPProxyClient
+```
 
 Individual tarballs for the [latest release](https://github.com/phraselock/PhraseLock-Bridge/releases/latest) are also available if you prefer to download manually.
 

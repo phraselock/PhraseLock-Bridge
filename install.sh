@@ -3,12 +3,14 @@
 # Downloads the latest release from GitHub and runs the chosen package installer.
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh | sudo bash -s PLPServer
+#   curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh | sudo bash -s PLPProxyServer
+#   curl -sSL https://raw.githubusercontent.com/phraselock/PhraseLock-Bridge/main/install.sh | sudo bash -s PLPProxyClient
 #
 set -euo pipefail
 
 GITHUB_REPO="phraselock/PhraseLock-Bridge"
-TITLE="PhraseLock-Bridge Setup"
+VALID_COMPONENTS="PLPServer PLPProxyServer PLPProxyClient"
 
 # ---------------------------------------------------------------------------
 # Root check
@@ -19,14 +21,18 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Dialog tool
+# Component argument
 # ---------------------------------------------------------------------------
-DIALOG=$(command -v whiptail 2>/dev/null || command -v dialog 2>/dev/null || true)
-if [[ -z "$DIALOG" ]]; then
-  echo "Installing whiptail..." >&2
-  DEBIAN_FRONTEND=noninteractive apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq whiptail
-  DIALOG=$(command -v whiptail)
+CHOICE="${1:-}"
+if [[ -z "$CHOICE" ]]; then
+  echo "Usage: sudo bash install.sh <component>" >&2
+  echo "  Components: ${VALID_COMPONENTS}" >&2
+  exit 1
+fi
+if [[ ! " ${VALID_COMPONENTS} " =~ " ${CHOICE} " ]]; then
+  echo "Error: unknown component '${CHOICE}'." >&2
+  echo "  Valid components: ${VALID_COMPONENTS}" >&2
+  exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -38,16 +44,6 @@ for PKG in curl tar; do
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$PKG"
   fi
 done
-
-# ---------------------------------------------------------------------------
-# Which package?
-# ---------------------------------------------------------------------------
-CHOICE=$("$DIALOG" --title "$TITLE" --menu \
-  "Which component do you want to install?" 14 65 3 \
-  "PLPServer"      "Customer device (Raspberry Pi / Linux server)" \
-  "PLPProxyServer" "Central proxy — only needed without a fixed IP" \
-  "PLPProxyClient" "Customer device tunnel client — needs PLPProxyServer first" \
-  3>&1 1>&2 2>&3) || { echo "Aborted." >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Fetch latest release from GitHub
