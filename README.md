@@ -33,6 +33,59 @@ What's actually running in there (`PLPServer`, and optionally
 `PLPProxyServer`/`PLPProxyClient` for devices without a fixed IP) is broken
 down in the sections below.
 
+## Which components do you need?
+
+That depends on a single question: **does your PLPServer have a fixed, publicly reachable IP address or hostname like myserver.com ?**
+
+### Scenario A — Fixed public IP
+
+Your server (Raspberry Pi, home server, VPS …) is directly reachable from the
+internet — either because it has a static public IP, or because you have a
+reliable DynDNS entry pointing to it and port-forwarding set up on your router.
+In this case your devices connect to it directly. No tunnel, no extra server.
+
+**You only need PLPServer.**
+
+```mermaid
+flowchart LR
+    PC["PC / Mac"] -->|"mTLS :443"| PS["PLPServer\n(your device, public IP)"]
+    Phone["Smartphone\n(iOS / Android)"] -->|"mTLS :443 + :8883"| PS
+
+    style PS fill:#dbeafe,stroke:#2563eb,stroke-width:2px
+```
+
+### Scenario B — No fixed public IP (behind NAT or CGNAT)
+
+Your server sits inside a home or company network without a reachable public IP —
+maybe because your ISP uses CGNAT, you have no option to port-forward, or you
+simply don't want to expose your home router. In this case your devices have no
+way to reach PLPServer directly.
+
+The solution is a small VPS (any cheap cloud server with a public IP) running
+**PLPProxyServer**. On your own device, **PLPProxyClient** opens a persistent
+outbound tunnel to that VPS — outbound connections always work, even behind
+strict NAT. Your devices then connect to the VPS, which relays the traffic
+through the tunnel to your PLPServer. The VPS only forwards encrypted bytes; it
+never terminates TLS and never sees your data.
+
+**You need PLPServer + PLPProxyClient on your device, and PLPProxyServer on a public server / VPS.**
+
+```mermaid
+flowchart TD
+    PC["PC / Mac"] -->|"mTLS :443"| VPS["PLPProxyServer\n(VPS, public IP)"]
+    Phone["Smartphone\n(iOS / Android)"] -->|"mTLS :443 + :8883"| VPS
+    VPS -->|"tunnel"| PPC
+
+    subgraph YD["your device (no public IP)"]
+        PPC["PLPProxyClient"]
+        PS["PLPServer"]
+        PPC --> PS
+    end
+
+    style VPS fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    style YD fill:#dbeafe,stroke:#2563eb,stroke-width:2px
+```
+
 ## What ends up on the target system
 
 Not the installer package's own layout — this is every file and every
@@ -91,9 +144,10 @@ certificate/key never has to exist twice.
 ├── sites-available/
 │   ├── phraselock.conf              (mTLS API reverse proxy)
 │   └── silent-drop.conf             (catch-all: drops unmatched port-80 traffic)
-└── sites-enabled/
-    ├── phraselock.conf → /etc/nginx/sites-available/phraselock.conf
-    └── silent-drop.conf → /etc/nginx/sites-available/silent-drop.conf
+├── sites-enabled/
+│   ├── phraselock.conf → /etc/nginx/sites-available/phraselock.conf
+│   └── silent-drop.conf → /etc/nginx/sites-available/silent-drop.conf
+└── phraselock.d/                    (drop-in location blocks — written by plp-backend/plp-fido2 installers)
 
 /etc/mosquitto/
 ├── mosquitto_8883.conf
