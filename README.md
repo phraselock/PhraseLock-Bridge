@@ -19,7 +19,7 @@ Linux/PKI expertise: a guided install to answer, not a manual to follow.
 
 
 ```mermaid
-flowchart LR
+flowchart TD
     PC[PC, Mac] -->|mTLS| Yours[Your infrastructure<br/>no third party involved]
     Yours -->|mTLS| Phone[Smartphone<br/>iOS, Android]
 
@@ -47,7 +47,7 @@ In this case your devices connect to it directly. No tunnel, no extra server.
 **You only need PLPServer.**
 
 ```mermaid
-flowchart LR
+flowchart TD
     PC["PC / Mac"] -->|"mTLS :443"| PS["PLPServer\n(your device, public IP)"]
     Phone["Smartphone\n(iOS / Android)"] -->|"mTLS :443 + :8883"| PS
 
