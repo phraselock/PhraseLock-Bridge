@@ -286,7 +286,7 @@ this device's own PKI (server CA, server certificate, MQTT client CA, and
 a bootstrap client `.p12` for API access from a PC/Mac).
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[API / app traffic] -->|mTLS :443| N[nginx] --> C[plp-custom]
     M[MQTT traffic] -->|mTLS :8883| Q[mosquitto]
 
@@ -313,7 +313,7 @@ TLS termination — that still happens on the customer device). Deliberately
 per installation. Multi-tenant proxying is out of scope by design.
 
 ```mermaid
-flowchart LR
+flowchart TD
     In[Incoming :443 / :8883] --> N[nginx stream forward] --> F[frps] -->|tunnel| Out[PLPProxyClient]
 ```
 
@@ -337,7 +337,7 @@ That manual transfer step is intentional: whoever controls it controls the
 resulting trust relationship, so it's not automated.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Frpc[frpc] <-->|tunnel| Server[PLPProxyServer]
     Frpc --> Local[Local :443 / :8883<br/>PLPServer]
 ```
