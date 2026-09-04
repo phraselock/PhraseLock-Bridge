@@ -101,21 +101,18 @@ certificate/key never has to exist twice.
 ├── README.txt
 ├── credentials.txt
 ├── pki-scripts/
-│   ├── server/
+│   ├── clients-api/                 (client certs only — see "Certificate flow" below)
 │   │   ├── pki.conf.txt, common.sh, make_ca.sh, make_server.sh, make_client.sh
 │   │   ├── CA/
 │   │   │   ├── ca.<dname>.key
 │   │   │   ├── ca.<dname>.pem
 │   │   │   ├── ca.<dname>.pkcs8.key
 │   │   │   └── ca.<dname>.srl
-│   │   ├── server/
-│   │   │   ├── <dname>.crt
-│   │   │   └── <dname>.key
 │   │   └── <dname>/
 │   │       ├── <dname>.p12         (bootstrap client cert for PC/Mac import)
 │   │       ├── <dname>.pem
 │   │       └── <dname>.key
-│   └── mqtt/
+│   └── clients-mqtt/
 │       ├── pki.conf.txt, common.sh, make_ca.sh, make_client.sh
 │       └── CA/
 │           ├── ca.mqtt_8883.key
@@ -132,19 +129,29 @@ certificate/key never has to exist twice.
         ├── ca.mqtt_8883.key         (copy — plp-custom issues MQTT client certs)
         └── ca.mqtt_8883.pem
 
+/etc/letsencrypt/                    (managed by certbot — the actual server certificate)
+├── live/<dname>/{fullchain,privkey,cert,chain}.pem
+├── renewal/<dname>.conf
+└── renewal-hooks/deploy/
+    ├── 01-reload-nginx.sh           (reload only — nginx reads the live/ symlinks directly)
+    └── 02-reload-mosquitto.sh       (copies fullchain/privkey — mosquitto can't read live/ in place)
+
+/opt/certbot/                        (certbot's own venv — pip install, not apt/snap)
+/var/www/certbot/                    (ACME HTTP-01 challenge webroot)
+/etc/systemd/system/certbot-renew.{service,timer}
+
 /etc/nginx/
 ├── certs/
-│   ├── <dname>.crt
-│   ├── <dname>.key
 │   ├── ca.<dname>.pem
-│   ├── server.crt → <dname>.crt
-│   ├── server.key → <dname>.key
-│   ├── ca.client.pem → ca.<dname>.pem
-│   └── client_ca/mqtt_8883/ca.mqtt_8883.pem  (copy, registered with mosquitto below)
+│   ├── server.crt → /etc/letsencrypt/live/<dname>/fullchain.pem
+│   ├── server.key → /etc/letsencrypt/live/<dname>/privkey.pem
+│   └── ca.client.pem → ca.<dname>.pem
 ├── sites-available/
+│   ├── phraselock_80.conf           (ACME HTTP-01 challenge vhost)
 │   ├── phraselock.conf              (mTLS API reverse proxy)
-│   └── silent-drop.conf             (catch-all: drops unmatched port-80 traffic)
+│   └── silent-drop.conf             (catch-all: drops unmatched traffic)
 ├── sites-enabled/
+│   ├── phraselock_80.conf → /etc/nginx/sites-available/phraselock_80.conf
 │   ├── phraselock.conf → /etc/nginx/sites-available/phraselock.conf
 │   └── silent-drop.conf → /etc/nginx/sites-available/silent-drop.conf
 └── phraselock.d/                    (drop-in location blocks — written by plp-backend/plp-fido2 installers)
@@ -154,16 +161,19 @@ certificate/key never has to exist twice.
 ├── mosquitto.conf → mosquitto_8883.conf
 ├── conf_8883.d/ssl.conf
 ├── certs/
-│   ├── bundle.crt → /etc/nginx/certs/ca.<dname>.pem
-│   ├── cert.crt → /etc/nginx/certs/<dname>.crt
-│   └── cert.key → /etc/nginx/certs/<dname>.key
+│   ├── fullchain.pem, privkey.pem   (own copy — mosquitto can't read /etc/letsencrypt in place)
+│   ├── server.crt → fullchain.pem
+│   ├── server.key → privkey.pem
+│   └── client-ca/mqtt_8883/ca.mqtt_8883.pem  (copy, registered with mosquitto below)
 ├── client-ca.8883.d/
 │   ├── add-client-ca.sh
-│   └── <hash>.0 → /etc/nginx/certs/client_ca/mqtt_8883/ca.mqtt_8883.pem
+│   └── <hash>.0 → /etc/mosquitto/certs/client-ca/mqtt_8883/ca.mqtt_8883.pem
 └── .passwd_8883
 
 /etc/systemd/system/plp-custom.service → /opt/phraselock/custom/plp-custom.service
 ```
+
+Note what's *not* here: an `/etc/nginx/certs/<dname>.crt`-style self-signed server certificate. `pki-scripts/clients-api/` still ships `make_server.sh` (for a fully self-signed, no-public-DNS fallback — see "Certificate flow" below), but `install.sh` no longer calls it; nginx's and mosquitto's `server.crt`/`server.key` come exclusively from Let's Encrypt now.
 
 **PLPProxyServer** — the central proxy (only needed without a fixed IP):
 
@@ -217,24 +227,49 @@ needed without a fixed IP):
 
 ## Certificate flow between installers
 
-The three installers generate two entirely separate certificate authorities
-— there is no shared PKI between `PLPServer` and `PLPProxyServer`. Each CA's
-output only ever leaves its own installer through one manual, deliberately
-un-automated copy step:
+`PLPServer`'s actual server TLS certificate (nginx `:443`, mosquitto
+`:8883` — the one every PC/phone validates) comes from **Let's Encrypt**,
+not from any of this project's own PKI. Self-signed server certificates
+stopped being viable once clients (notably iOS 26+) began rejecting them
+outright, and a publicly trusted CA solves that outright instead of trying
+to work around it.
+
+What the installers' own PKI scripts generate instead are three entirely
+separate, unrelated **client**-certificate CAs — none of them ever signs a
+server certificate for a public-facing endpoint, and none of them trusts
+another's certificates:
+
+| CA | Directory | Signs |
+|---|---|---|
+| API client CA | `PLPServer/pki-scripts/clients-api` | the bootstrap `.p12` + dynamically issued API client certs |
+| MQTT client CA | `PLPServer/pki-scripts/clients-mqtt` | client certs for mosquitto's `:8883` mTLS |
+| Proxy CA | `PLPProxyServer/pki-scripts/server` | frp client certs, **and** the frps↔frpc tunnel's own server cert (an internal, infra-only TLS session between your own machines — never seen by an end-user device, so no public CA is needed here) |
+
+Keeping these apart matters: a certificate issued by one must never pass
+as valid against another (see the mosquitto `capath`-only trust config in
+`PLPServer/install.sh`). Each CA's output only ever leaves its own
+installer through one manual, deliberately un-automated copy step:
 
 ```mermaid
 flowchart TD
-    subgraph S["PLPServer/pki-scripts/server"]
-        SCA[Server CA + server cert]
+    subgraph S["PLPServer/pki-scripts/clients-api"]
+        SCA[API client CA]
         SCA --> P12["Bootstrap client .p12<br/>(make_client.sh)"]
     end
     P12 -->|you copy this| PCMac["PC / Mac certificate store<br/>(Current User / login keychain)"]
 
+    subgraph SM["PLPServer/pki-scripts/clients-mqtt"]
+        MCA[MQTT client CA]
+        MCA --> MCert["MQTT client certs<br/>(issued dynamically by plp-custom)"]
+    end
+
     subgraph P["PLPProxyServer/pki-scripts/server"]
-        PCA[Proxy CA + server cert]
+        PCA[Proxy CA + tunnel server cert]
         PCA --> FRPCert["frp client cert<br/>(make_client_frp.sh)"]
     end
     FRPCert -->|you copy this| CI["PLPProxyClient/certs-in/"]
+
+    LE["Let's Encrypt<br/>(public CA, not part of this repo's PKI)"] -.->|"nginx :443 + mosquitto :8883<br/>server certificate"| Devices["PC / Mac / phone"]
 ```
 
 ## Common conventions across all three installers
@@ -280,10 +315,14 @@ Individual tarballs for the [latest release](https://github.com/phraselock/Phras
 ## PLPServer
 
 Installs the customer-facing stack: nginx (mTLS-protected API reverse
-proxy), mosquitto (MQTT broker with client-certificate trust store),
-`plp-custom` (Java 21 service, installed as a systemd unit), and generates
-this device's own PKI (server CA, server certificate, MQTT client CA, and
-a bootstrap client `.p12` for API access from a PC/Mac).
+proxy) and mosquitto (MQTT broker with client-certificate trust store),
+both getting their server TLS certificate from Let's Encrypt via `certbot`
+(auto-renewing, systemd timer + deploy hooks — see "Certificate flow"
+above), plus `plp-custom` (Java 21 service, installed as a systemd unit).
+Also generates this device's own client-certificate PKI: a CA for API
+access (with a bootstrap `.p12` for a PC/Mac) and a separate CA for MQTT
+broker access — kept apart on purpose, so a certificate for one can never
+authenticate as the other.
 
 ```mermaid
 flowchart TD
@@ -299,7 +338,10 @@ cd PLPServer
 ./install.sh
 ```
 
-Asks once for the server's public IP/hostname, an MQTT broker
+Asks once for the server's public **domain name** (must already resolve
+here via DNS — Let's Encrypt validates ownership over port 80 before
+issuing the certificate; a bare IP address no longer works, unlike before),
+an e-mail address for Let's Encrypt renewal notices, an MQTT broker
 username/password, and a password to protect the generated client `.p12`.
 See `/opt/phraselock/README.txt` afterward for how to import the `.p12`
 certificate (Windows: "Current User" store; Mac: "login" keychain).
@@ -307,14 +349,17 @@ certificate (Windows: "Current User" store; Mac: "login" keychain).
 ## PLPProxyServer
 
 Installs the central reverse-tunnel proxy: `frps` (downloaded binary, not
-a package) plus an nginx `stream{}` block doing plain TCP forwarding (no
-TLS termination — that still happens on the customer device). Deliberately
-**single-tenant**: fixed ports, one client certificate issued automatically
-per installation. Multi-tenant proxying is out of scope by design.
+a package) plus an nginx `stream{}` block doing plain TCP forwarding for
+three tunnels — `:80` (so the customer's own `certbot`, behind this proxy,
+can still complete its Let's Encrypt HTTP-01 challenge), `:443` and `:8883`
+— no TLS termination anywhere, that still happens on the customer device.
+Deliberately **single-tenant**: fixed ports, one client certificate issued
+automatically per installation. Multi-tenant proxying is out of scope by
+design.
 
 ```mermaid
 flowchart TD
-    In[Incoming :443 / :8883] --> N[nginx stream forward] --> F[frps] -->|tunnel| Out[PLPProxyClient]
+    In[Incoming :80 / :443 / :8883] --> N[nginx stream forward] --> F[frps] -->|tunnel| Out[PLPProxyClient]
 ```
 
 ```
@@ -329,8 +374,8 @@ client certificates stay valid.
 
 ## PLPProxyClient
 
-Installs `frpc` on the customer device, tunneling its local ports 443 and
-8883 out to a `PLPProxyServer`. Does **not** generate its own PKI — the
+Installs `frpc` on the customer device, tunneling its local ports 80, 443
+and 8883 out to a `PLPProxyServer`. Does **not** generate its own PKI — the
 client certificate must be issued by the proxy server (`make_client_frp.sh`
 there) and copied manually into `certs-in/` before running this installer.
 That manual transfer step is intentional: whoever controls it controls the
@@ -339,7 +384,7 @@ resulting trust relationship, so it's not automated.
 ```mermaid
 flowchart TD
     Frpc[frpc] <-->|tunnel| Server[PLPProxyServer]
-    Frpc --> Local[Local :443 / :8883<br/>PLPServer]
+    Frpc --> Local[Local :80 / :443 / :8883<br/>PLPServer]
 ```
 
 ```
@@ -356,3 +401,14 @@ Each installer was built and verified against dedicated test
 infrastructure mirroring the two real deployment targets (a Raspberry Pi
 and a cloud VPS), including a full end-to-end run with real client devices
 communicating through the complete tunnel chain.
+
+The Let's Encrypt migration was verified both as a fresh install (real
+certificate issued via the HTTP-01 webroot challenge, `certbot renew
+--dry-run` succeeding, both nginx and mosquitto presenting a certificate
+that validates against the system trust store with no pinning) and as an
+in-place upgrade of an already-installed PLPServer (old `pki-scripts/server`
+and `mqtt` directories and mosquitto's old certificate filenames migrated
+automatically, nothing left behind). The PLPProxyServer/PLPProxyClient
+port-80 tunnel was verified end-to-end separately: a request from the
+public internet through the proxy's new `:80` forward reached the correct
+vhost on the origin server behind it.
