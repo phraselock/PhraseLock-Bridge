@@ -346,6 +346,23 @@ username/password, and a password to protect the generated client `.p12`.
 See `/opt/phraselock/README.txt` afterward for how to import the `.p12`
 certificate (Windows: "Current User" store; Mac: "login" keychain).
 
+> [!WARNING]
+> **The `pl.core.jwt` token install.sh fetches automatically is
+> temporary** — valid only a few days, just enough to get this install
+> working right away. For a backend you intend to keep running, you must
+> separately request a proper, long-lived token from PhraseLock (free, but
+> not self-service — you have to ask for it) and replace `pl.core.jwt` in
+> `/opt/phraselock/custom/application.properties` with it, then
+> `systemctl restart plp-custom`. See `/opt/phraselock/README.txt` for the
+> full instructions.
+
+> [!WARNING]
+> **Import the bootstrap client `.p12` to the exact store/location**
+> called out in `/opt/phraselock/README.txt` — "Current User" on Windows,
+> the "login" keychain on Mac, never "Local Machine"/"System". Get this
+> wrong and client apps simply won't find the certificate, with no obvious
+> error pointing back to the import step.
+
 ## PLPProxyServer
 
 Installs the central reverse-tunnel proxy: `frps` (downloaded binary, not
