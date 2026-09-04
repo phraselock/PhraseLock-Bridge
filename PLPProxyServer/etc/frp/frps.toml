@@ -9,9 +9,10 @@ transport.tls.keyFile = "/etc/frp/certs/server.key"
 transport.tls.trustedCaFile = "/etc/frp/certs/ca.crt"
 
 # Single-tenant setup: this proxy server serves exactly the one customer who
-# ran this installation, so only their two fixed ports are allowed — not a
+# ran this installation, so only their three fixed ports are allowed — not a
 # range. Anyone wanting to run a shared, multi-tenant proxy is on their own.
 allowPorts = [
+  { single = __HTTP_PORT__ },
   { single = __HTTPS_PORT__ },
   { single = __MQTT_PORT__ }
 ]

@@ -36,14 +36,20 @@ CURRENT_DNAME=$(grep "^[[:space:]]*dname[[:space:]]*=" "$PKI_CONF" | head -n1 | 
 # instead of a real value — reject it (and an empty answer) so a customer
 # who just clicks OK doesn't end up with a certificate issued for the
 # placeholder text.
-PLACEHOLDER="[Enter a valid domain or IP address]"
+PLACEHOLDER="[Enter a valid public domain name]"
+
+# Let's Encrypt cannot issue a certificate for a bare IP address (only for
+# DNS names), so — unlike the old self-signed flow — dname must now be an
+# actual domain that already resolves to this server. Rejected with the
+# same regex used elsewhere in the PKI scripts to detect IPv4 literals.
+IPV4_RE='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 
 # whiptail/dialog write the user's input to stderr (fd 2), not stdout — the
 # "3>&1 1>&2 2>&3" trick briefly swaps the file descriptors so that $(...)
 # can capture the input.
 while :; do
   if ! DNAME=$("$DIALOG" --title "PLP Server Setup" \
-    --inputbox "Public IP address or hostname of this server:" 10 60 \
+    --inputbox "Public domain name (FQDN) of this server.\n\nMust already point here via DNS (A/AAAA record) — Let's Encrypt validates ownership over HTTP on port 80 before issuing the certificate:" 14 70 \
     "$CURRENT_DNAME" \
     3>&1 1>&2 2>&3); then
     echo "Aborted (Cancel/Esc)." >&2
@@ -51,7 +57,12 @@ while :; do
   fi
   if [[ -z "$DNAME" || "$DNAME" == "$PLACEHOLDER" ]]; then
     "$DIALOG" --title "PLP Server Setup" --msgbox \
-      "Please enter an actual domain name or IP address, not the placeholder." 8 60
+      "Please enter an actual domain name, not the placeholder." 8 60
+    continue
+  fi
+  if [[ "$DNAME" =~ $IPV4_RE ]]; then
+    "$DIALOG" --title "PLP Server Setup" --msgbox \
+      "Let's Encrypt cannot issue a certificate for a bare IP address.\nPlease enter a domain name that resolves to this server instead." 9 70
     continue
   fi
   break
@@ -62,6 +73,20 @@ done
 sed -i.bak "s|^\([[:space:]]*dname[[:space:]]*=\).*|\1 ${DNAME}|" "$PKI_CONF"
 rm -f "${PKI_CONF}.bak"
 
+# --- Let's Encrypt contact e-mail ------------------------------------------
+#
+# Used only for certbot's expiry/problem notifications, not for the CA/client
+# certificate subject — defaults to the PKI's subj_email so most installs
+# don't need to type anything here.
+CURRENT_LE_EMAIL=$(grep "^[[:space:]]*subj_email[[:space:]]*=" "$PKI_CONF" | head -n1 | cut -d'=' -f2- | xargs)
+if ! LE_EMAIL=$("$DIALOG" --title "PLP Server Setup" \
+    --inputbox "E-mail address for Let's Encrypt renewal/expiry notices:" 10 65 \
+    "$CURRENT_LE_EMAIL" \
+    3>&1 1>&2 2>&3); then
+  echo "Aborted (Cancel/Esc)." >&2
+  exit 1
+fi
+
 CA_PEM="$PKI_SERVER_DIR/CA/ca.${DNAME}.pem"
 if [[ -f "$CA_PEM" ]]; then
   CA_STATUS="CA already existed for '${DNAME}' — reused, not regenerated."
@@ -70,7 +95,10 @@ else
   CA_STATUS="CA newly created for '${DNAME}'."
 fi
 
-( cd "$PKI_SERVER_DIR" && ./make_server.sh )
+# No make_server.sh call here anymore — the server's TLS certificate (nginx
+# + mosquitto) now comes from Let's Encrypt further down, not from this CA.
+# This CA's only remaining job is client certificates (below, and the
+# dynamic ones plp-custom issues at runtime).
 
 # MQTT client CA (mosquitto's trust anchor for dynamically issued client
 # certificates). The port is a fixed application constant, not a per-customer
@@ -126,7 +154,7 @@ else
   P12_PASSWORD_NOTE="$P12_PASS"
 fi
 
-# --- nginx -------------------------------------------------------------
+# --- nginx (package + port-80 ACME vhost) -----------------------------
 
 # Always run, never gated behind a "command -v nginx" check: apt-get install
 # is idempotent on an already-healthy package, and — unlike a presence
@@ -136,20 +164,6 @@ fi
 DEBIAN_FRONTEND=noninteractive apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
 
-# Certs directory is fully replaced on every run, rebuilt from the PKI
-# artifacts generated above — never hand-edited, so nothing of value is lost.
-NGINX_CERTS_DIR=/etc/nginx/certs
-rm -rf "$NGINX_CERTS_DIR"
-mkdir -p "$NGINX_CERTS_DIR"
-
-cp "$PKI_SERVER_DIR/CA/ca.${DNAME}.pem" "$NGINX_CERTS_DIR/"
-cp "$PKI_SERVER_DIR/server/${DNAME}.crt" "$PKI_SERVER_DIR/server/${DNAME}.key" "$NGINX_CERTS_DIR/"
-
-# Generic aliases so phraselock.conf never has to embed the dname itself.
-ln -sf "${DNAME}.crt"    "$NGINX_CERTS_DIR/server.crt"
-ln -sf "${DNAME}.key"    "$NGINX_CERTS_DIR/server.key"
-ln -sf "ca.${DNAME}.pem" "$NGINX_CERTS_DIR/ca.client.pem"
-
 # Sites this installer doesn't manage: drop the Debian sample entirely, only
 # disable (don't delete) the stock default so it stays available as a
 # reference but no longer conflicts with silent-drop.conf's default_server.
@@ -157,6 +171,101 @@ rm -f /etc/nginx/sites-enabled/test-site /etc/nginx/sites-available/test-site
 rm -f /etc/nginx/sites-enabled/default
 
 SITES_SRC_DIR="$SCRIPT_DIR/etc/nginx/sites-available"
+
+# The port-80 ACME-challenge vhost has to exist and be reloaded into nginx
+# *before* certbot runs below — certbot's webroot authenticator proves
+# domain ownership by having Let's Encrypt fetch a token file from here over
+# plain HTTP. The 443 vhost (phraselock.conf, needs the certificate that
+# doesn't exist yet) is written further down, after certbot has run.
+mkdir -p /var/www/certbot
+sed "s|server_name .*;|server_name ${DNAME};|" \
+  "$SITES_SRC_DIR/phraselock_80.conf" > /etc/nginx/sites-available/phraselock_80.conf
+ln -sf /etc/nginx/sites-available/phraselock_80.conf /etc/nginx/sites-enabled/phraselock_80.conf
+
+nginx -t
+systemctl reload nginx 2>/dev/null || systemctl restart nginx
+
+# --- certbot (Let's Encrypt) ---------------------------------------------
+#
+# Installed into its own venv under /opt/certbot rather than via apt/snap:
+# Debian's certbot package pulls in snapd on some images, which this
+# installer doesn't want as a dependency, and the venv method is the
+# officially supported no-snap path from the Certbot project itself.
+if [[ ! -x /opt/certbot/bin/certbot ]]; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv libaugeas0
+  python3 -m venv /opt/certbot
+  /opt/certbot/bin/pip install --upgrade pip >/dev/null
+  /opt/certbot/bin/pip install certbot
+  ln -sf /opt/certbot/bin/certbot /usr/bin/certbot
+fi
+
+LE_LIVE_DIR="/etc/letsencrypt/live/${DNAME}"
+if [[ -f "${LE_LIVE_DIR}/fullchain.pem" ]]; then
+  LE_STATUS="Let's Encrypt certificate already existed for '${DNAME}' — reused, not re-requested."
+else
+  certbot certonly --webroot -w /var/www/certbot \
+    -d "$DNAME" -m "$LE_EMAIL" --agree-tos --no-eff-email --non-interactive --key-type ecdsa
+  LE_STATUS="Let's Encrypt certificate newly issued for '${DNAME}'."
+fi
+
+# certbot's own systemd timer only ships with the apt package, not the pip/
+# venv install used here — so a matching timer+service is written by hand.
+# Written and (re-)enabled unconditionally, same reasoning as the apt-get
+# install above: repairs a prior install where this step failed partway.
+cat > /etc/systemd/system/certbot-renew.service << 'EOF'
+[Unit]
+Description=Certbot Renewal
+
+[Service]
+Type=oneshot
+ExecStart=/opt/certbot/bin/certbot renew --quiet
+EOF
+
+cat > /etc/systemd/system/certbot-renew.timer << 'EOF'
+[Unit]
+Description=Run Certbot Renewal twice daily
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now certbot-renew.timer >/dev/null 2>&1 || true
+
+# Deploy hooks: certbot runs every script under this directory after each
+# successful renewal (initial issuance above does NOT trigger them, which is
+# why the nginx/mosquitto cert wiring below still has to happen here too,
+# not just in the hooks).
+LE_HOOKS_DIR=/etc/letsencrypt/renewal-hooks/deploy
+LE_HOOKS_SRC_DIR="$SCRIPT_DIR/etc/letsencrypt/renewal-hooks/deploy"
+mkdir -p "$LE_HOOKS_DIR"
+sed "s|__DNAME__|${DNAME}|g" "$LE_HOOKS_SRC_DIR/01-reload-nginx.sh"     > "$LE_HOOKS_DIR/01-reload-nginx.sh"
+sed "s|__DNAME__|${DNAME}|g" "$LE_HOOKS_SRC_DIR/02-reload-mosquitto.sh" > "$LE_HOOKS_DIR/02-reload-mosquitto.sh"
+chmod +x "$LE_HOOKS_DIR/01-reload-nginx.sh" "$LE_HOOKS_DIR/02-reload-mosquitto.sh"
+
+# --- nginx (certs + 443 vhost) -------------------------------------------
+
+# Certs directory is fully replaced on every run, rebuilt from the PKI/LE
+# artifacts generated above — never hand-edited, so nothing of value is lost.
+NGINX_CERTS_DIR=/etc/nginx/certs
+rm -rf "$NGINX_CERTS_DIR"
+mkdir -p "$NGINX_CERTS_DIR"
+
+cp "$PKI_SERVER_DIR/CA/ca.${DNAME}.pem" "$NGINX_CERTS_DIR/"
+
+# server.crt/server.key are symlinks straight into Let's Encrypt's live
+# directory — not a copy — so a renewal (which replaces those symlinks
+# atomically) is picked up by a plain reload, no re-copy needed. This is
+# safe for nginx specifically because its master process, which reads the
+# TLS private key before dropping privileges, still runs as root.
+ln -sf "${LE_LIVE_DIR}/fullchain.pem" "$NGINX_CERTS_DIR/server.crt"
+ln -sf "${LE_LIVE_DIR}/privkey.pem"   "$NGINX_CERTS_DIR/server.key"
+ln -sf "ca.${DNAME}.pem"              "$NGINX_CERTS_DIR/ca.client.pem"
 
 sed "s|server_name .*;|server_name ${DNAME};|" \
   "$SITES_SRC_DIR/phraselock.conf" > /etc/nginx/sites-available/phraselock.conf
@@ -170,7 +279,7 @@ mkdir -p /etc/nginx/phraselock.d
 nginx -t
 systemctl reload nginx 2>/dev/null || systemctl restart nginx
 
-NGINX_STATUS="nginx installed and reloaded, phraselock.conf serving '${DNAME}'."
+NGINX_STATUS="nginx installed and reloaded, phraselock.conf serving '${DNAME}' (Let's Encrypt)."
 
 # --- mosquitto -----------------------------------------------------------
 
@@ -192,20 +301,23 @@ ln -sf mosquitto_8883.conf /etc/mosquitto/mosquitto.conf
 mkdir -p /etc/mosquitto/conf_8883.d
 cp "$MOSQ_SRC_DIR/conf_8883.d/ssl.conf" /etc/mosquitto/conf_8883.d/ssl.conf
 
-# The mosquitto process now exists as a system user/group, so the server key
-# (chmod 600 by make_server.sh, owned by root) can be shared with it via
-# group read access instead of making it world-readable.
-chgrp mosquitto "$NGINX_CERTS_DIR/${DNAME}.key"
-chmod 640 "$NGINX_CERTS_DIR/${DNAME}.key"
-
-# mosquitto's own certs directory only holds generic-name symlinks into
-# nginx's certs directory — same server identity, single source of truth.
+# Unlike nginx, mosquitto drops root and runs as its own unprivileged user,
+# so it cannot read Let's Encrypt's privkey.pem in place (root:root 600).
+# Its own certs directory therefore holds an actual, group-readable copy —
+# refreshed here on install and by the 02-reload-mosquitto.sh deploy hook on
+# every renewal — rather than a symlink into /etc/letsencrypt/live. (Symlink
+# ownership/mode is irrelevant on Linux — access control always uses the
+# target file's own permissions — so only fullchain.pem/privkey.pem below
+# need an explicit chown/chmod; cert.crt/cert.key/bundle.crt don't.)
 MOSQ_CERTS_DIR=/etc/mosquitto/certs
 mkdir -p "$MOSQ_CERTS_DIR"
 ln -sf "$NGINX_CERTS_DIR/ca.${DNAME}.pem" "$MOSQ_CERTS_DIR/bundle.crt"
-ln -sf "$NGINX_CERTS_DIR/${DNAME}.crt"    "$MOSQ_CERTS_DIR/cert.crt"
-ln -sf "$NGINX_CERTS_DIR/${DNAME}.key"    "$MOSQ_CERTS_DIR/cert.key"
-chown -R mosquitto:mosquitto "$MOSQ_CERTS_DIR"
+ln -sf fullchain.pem "$MOSQ_CERTS_DIR/cert.crt"
+ln -sf privkey.pem   "$MOSQ_CERTS_DIR/cert.key"
+cp "${LE_LIVE_DIR}/fullchain.pem" "${LE_LIVE_DIR}/privkey.pem" "$MOSQ_CERTS_DIR/"
+chown root:mosquitto "$MOSQ_CERTS_DIR/fullchain.pem" "$MOSQ_CERTS_DIR/privkey.pem"
+chmod 644 "$MOSQ_CERTS_DIR/fullchain.pem"
+chmod 640 "$MOSQ_CERTS_DIR/privkey.pem"
 
 # The MQTT client CA is copied into the canonical certs directory — same
 # pattern as the server cert — instead of pointing capath straight at the
@@ -367,7 +479,8 @@ cp "$CUSTOM_SRC_DIR/application.properties" "$CUSTOM_DIR/application.properties"
 sed -i "s|^pl\.core\.jwt=.*|pl.core.jwt=${PL_CORE_JWT}|" "$CUSTOM_DIR/application.properties"
 
 # CA private keys plp-custom needs to issue certificates at runtime: the
-# server CA's key (bootstrap client certs) and the MQTT CA's key+cert
+# client CA's key (bootstrap client certs; this CA no longer signs a server
+# certificate, see the pki.conf.txt comment) and the MQTT CA's key+cert
 # (dynamically issued MQTT client certs) — same set as on hmx.
 cp "$PKI_SERVER_DIR/CA/ca.${DNAME}.key" "$CUSTOM_DIR/certs/CA/"
 cp "$PKI_MQTT_DIR/CA/ca.${MQTT_DNAME}.key" "$PKI_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem" "$CUSTOM_DIR/certs/CA/"
@@ -405,7 +518,7 @@ chmod 600 /opt/phraselock/credentials.txt
 # which is easy to miss once whiptail redraws the screen.
 "$DIALOG" --title "PLP Server Setup" --msgbox \
 "${CA_STATUS}
-Server certificate (re)generated for '${DNAME}'.
+${LE_STATUS}
 
 ${MQTT_CA_STATUS}
 

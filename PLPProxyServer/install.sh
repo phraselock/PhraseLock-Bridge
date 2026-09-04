@@ -28,6 +28,7 @@ cp "$SCRIPT_DIR/README.txt" /etc/frp/README.txt
 # Single-tenant setup: fixed ports for the one customer this proxy serves,
 # not a dynamically managed pool. Anyone needing multiple tenants on one
 # proxy has to design that themselves — out of scope here on purpose.
+FRP_HTTP_PORT=10000
 FRP_HTTPS_PORT=30000
 FRP_MQTT_PORT=60000
 
@@ -154,6 +155,7 @@ fi
 
 mkdir -p /etc/frp
 sed -e "s|__AUTH_TOKEN__|${AUTH_TOKEN}|" \
+    -e "s|__HTTP_PORT__|${FRP_HTTP_PORT}|" \
     -e "s|__HTTPS_PORT__|${FRP_HTTPS_PORT}|" \
     -e "s|__MQTT_PORT__|${FRP_MQTT_PORT}|" \
     "$SCRIPT_DIR/etc/frp/frps.toml" > /etc/frp/frps.toml
@@ -182,14 +184,15 @@ DEBIAN_FRONTEND=noninteractive apt-get update
 # stream{} directive below needs it — without it nginx.conf fails to parse.
 DEBIAN_FRONTEND=noninteractive apt-get install -y nginx libnginx-mod-stream
 
-sed -e "s|__HTTPS_PORT__|${FRP_HTTPS_PORT}|" \
+sed -e "s|__HTTP_PORT__|${FRP_HTTP_PORT}|" \
+    -e "s|__HTTPS_PORT__|${FRP_HTTPS_PORT}|" \
     -e "s|__MQTT_PORT__|${FRP_MQTT_PORT}|" \
     "$SCRIPT_DIR/etc/nginx/nginx.conf" > /etc/nginx/nginx.conf
 
 nginx -t
 systemctl restart nginx
 
-NGINX_STATUS="nginx installed, forwarding 443→127.0.0.1:${FRP_HTTPS_PORT} and 8883→127.0.0.1:${FRP_MQTT_PORT}."
+NGINX_STATUS="nginx installed, forwarding 80→127.0.0.1:${FRP_HTTP_PORT}, 443→127.0.0.1:${FRP_HTTPS_PORT} and 8883→127.0.0.1:${FRP_MQTT_PORT}."
 
 # --- client certificate ----------------------------------------------------
 

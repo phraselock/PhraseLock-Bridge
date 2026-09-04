@@ -1,10 +1,11 @@
 PLPServer — Client Certificate Setup
 ======================================
 
-install.sh set up this server's own CA, server certificate, nginx,
-mosquitto and plp-custom — and, as part of that, issued the one bootstrap
-client certificate needed to access this server's API
-(phraselock.conf, mTLS on port 443).
+install.sh set up this server's own CA (used for client certificates only),
+a Let's Encrypt server certificate (auto-renewing), nginx, mosquitto and
+plp-custom — and, as part of that, issued the one bootstrap client
+certificate needed to access this server's API (phraselock.conf, mTLS on
+port 443).
 
 The client certificate bundle:
 
@@ -40,6 +41,7 @@ MQTT broker login:
   Username: __MQTT_USER__
   Password: see credentials.txt next to this file.
 
-Everything else this install produced (server CA, MQTT CA, nginx,
-mosquitto, plp-custom) is already wired up automatically — no further
+Everything else this install produced (client CA, MQTT CA, Let's Encrypt
+server certificate, nginx, mosquitto, plp-custom) is already wired up
+automatically, including certificate auto-renewal — no further
 manual steps needed beyond this certificate import.

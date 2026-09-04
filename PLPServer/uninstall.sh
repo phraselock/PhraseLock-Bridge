@@ -27,14 +27,45 @@ rm -f /etc/mosquitto/.passwd_8883
 
 # --- nginx ---------------------------------------------------------------
 
-rm -f /etc/nginx/sites-enabled/phraselock.conf /etc/nginx/sites-enabled/silent-drop.conf
-rm -f /etc/nginx/sites-available/phraselock.conf /etc/nginx/sites-available/silent-drop.conf
+rm -f /etc/nginx/sites-enabled/phraselock.conf /etc/nginx/sites-enabled/silent-drop.conf /etc/nginx/sites-enabled/phraselock_80.conf
+rm -f /etc/nginx/sites-available/phraselock.conf /etc/nginx/sites-available/silent-drop.conf /etc/nginx/sites-available/phraselock_80.conf
 rm -rf /etc/nginx/certs
+rm -rf /var/www/certbot
 
 # Re-enable the stock Debian default site that install.sh disabled — it was
 # only unlinked from sites-enabled, never deleted, so this is a clean revert.
 if [[ -f /etc/nginx/sites-available/default ]]; then
   ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+fi
+
+# --- certbot / Let's Encrypt ----------------------------------------------
+
+# The renewal timer is always stopped — there's nothing left here for it to
+# renew for once nginx/mosquitto's config is gone. The certificate itself
+# (and the certbot venv) is only deleted on confirmation: unlike the CA
+# below, re-obtaining it is quick and free, but this still asks first since
+# a reinstall within the same domain/rate-limit window benefits from reusing
+# it (install.sh already treats an existing certificate as reusable).
+systemctl stop certbot-renew.timer 2>/dev/null || true
+systemctl disable certbot-renew.timer >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/certbot-renew.timer /etc/systemd/system/certbot-renew.service
+systemctl daemon-reload
+rm -rf /etc/letsencrypt/renewal-hooks/deploy/01-reload-nginx.sh /etc/letsencrypt/renewal-hooks/deploy/02-reload-mosquitto.sh
+
+if [[ -d /etc/letsencrypt ]] || [[ -x /opt/certbot/bin/certbot ]]; then
+  if "$DIALOG" --title "PLP Server Uninstall" --yesno \
+"Also delete the Let's Encrypt certificate(s) under /etc/letsencrypt and the certbot installation under /opt/certbot?
+
+A reinstall can reuse an existing certificate if it's kept." 11 70; then
+    [[ -x /opt/certbot/bin/certbot ]] && /opt/certbot/bin/certbot delete --non-interactive >/dev/null 2>&1 || true
+    rm -rf /etc/letsencrypt /opt/certbot
+    rm -f /usr/bin/certbot
+    LE_STATUS="Let's Encrypt certificate(s) and certbot deleted."
+  else
+    LE_STATUS="Let's Encrypt certificate(s) and certbot kept (renewal timer stopped)."
+  fi
+else
+  LE_STATUS="No Let's Encrypt certificate found — nothing to delete."
 fi
 
 # --- packages (asked, not automatic) --------------------------------------
@@ -71,4 +102,6 @@ fi
 plp-custom, mosquitto and nginx configuration/certs removed.
 ${PACKAGE_STATUS}
 
-${CA_STATUS}" 14 70
+${LE_STATUS}
+
+${CA_STATUS}" 17 70

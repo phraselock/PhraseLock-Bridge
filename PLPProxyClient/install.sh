@@ -7,8 +7,9 @@ CERTS_IN_DIR="$SCRIPT_DIR/certs-in"
 DIALOG=$(command -v whiptail || command -v dialog)
 
 # Single-tenant setup, same fixed ports as PLPProxyServer — must match
-# exactly, since they're not negotiated, just two hardcoded constants on
+# exactly, since they're not negotiated, just hardcoded constants on
 # both ends.
+FRP_HTTP_PORT=10000
 FRP_HTTPS_PORT=30000
 FRP_MQTT_PORT=60000
 
@@ -107,6 +108,7 @@ chmod 600 "$FRP_CERTS_DIR/client.key"
 
 sed -e "s|__SERVER_ADDR__|${SERVER_ADDR}|" \
     -e "s|__AUTH_TOKEN__|${AUTH_TOKEN}|" \
+    -e "s|__HTTP_PORT__|${FRP_HTTP_PORT}|" \
     -e "s|__HTTPS_PORT__|${FRP_HTTPS_PORT}|" \
     -e "s|__MQTT_PORT__|${FRP_MQTT_PORT}|" \
     "$SCRIPT_DIR/etc/frp/frpc.toml" > /etc/frp/frpc.toml
@@ -129,6 +131,6 @@ systemctl restart frpc
 "${FRPC_STATUS}
 
 frpc configured for server '${SERVER_ADDR}' and restarted.
-Tunnels: local 443 -> remote ${FRP_HTTPS_PORT}, local 8883 -> remote ${FRP_MQTT_PORT}.
+Tunnels: local 80 -> remote ${FRP_HTTP_PORT}, local 443 -> remote ${FRP_HTTPS_PORT}, local 8883 -> remote ${FRP_MQTT_PORT}.
 
 See /etc/frp/README.txt for background if anything needs troubleshooting later." 16 78
