@@ -73,11 +73,28 @@ fi
 if "$DIALOG" --title "PLP Server Uninstall" --yesno \
 "Also completely remove the nginx and mosquitto packages (apt purge), not just their configuration?" 10 70; then
   DEBIAN_FRONTEND=noninteractive apt-get purge -y nginx nginx-common mosquitto
-  DEBIAN_FRONTEND=noninteractive apt-get autoremove -y
   PACKAGE_STATUS="nginx and mosquitto packages purged."
+
+  # A separate, explicit question — "apt autoremove" is not scoped to what
+  # was just purged, it sweeps every package currently marked as
+  # auto-installed-and-unneeded system-wide (a real case we hit while
+  # testing: it took two long-orphaned old kernel images with it, unrelated
+  # to nginx/mosquitto). Bundling that into the purge question above would
+  # silently give this uninstaller a much bigger blast radius than "remove
+  # what PLPServer installed" — so it needs its own informed yes/no.
+  if "$DIALOG" --title "PLP Server Uninstall" --yesno \
+"Also run 'apt autoremove' to clean up now-orphaned dependencies?
+
+This is NOT limited to nginx/mosquitto's own dependencies — it removes every package currently marked auto-installed-and-unneeded system-wide, which may include things unrelated to PLPServer (e.g. old kernel images)." 12 74; then
+    DEBIAN_FRONTEND=noninteractive apt-get autoremove -y
+    AUTOREMOVE_STATUS="apt autoremove run."
+  else
+    AUTOREMOVE_STATUS="apt autoremove skipped."
+  fi
 else
   systemctl reload nginx 2>/dev/null || true
   PACKAGE_STATUS="nginx and mosquitto packages left installed."
+  AUTOREMOVE_STATUS=""
 fi
 
 # --- CA / pki-scripts (asked, not automatic) ------------------------------
@@ -101,7 +118,8 @@ fi
 
 plp-custom, mosquitto and nginx configuration/certs removed.
 ${PACKAGE_STATUS}
+${AUTOREMOVE_STATUS}
 
 ${LE_STATUS}
 
-${CA_STATUS}" 17 70
+${CA_STATUS}" 18 70
