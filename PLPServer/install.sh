@@ -14,8 +14,17 @@ if [[ ! -d "$PKI_DIR" ]]; then
   cp -r "$SCRIPT_DIR/pki-scripts" "$PKI_DIR"
 fi
 
-PKI_SERVER_DIR="$PKI_DIR/server"
-PKI_CONF="$PKI_SERVER_DIR/pki.conf.txt"
+# One-time migration: these directories used to be named "server"/"mqtt",
+# from when the "server" CA still signed this server's own TLS certificate
+# too (pre Let's Encrypt). Renamed to "clients-api"/"clients-mqtt" to make
+# clear both are client-cert-only CAs now (see pki-scripts/clients-api/
+# pki.conf.txt) — an existing install's already-issued CAs are moved into
+# place here instead of silently missing the rename and erroring out below.
+[[ -d "$PKI_DIR/server" && ! -d "$PKI_DIR/clients-api"  ]] && mv "$PKI_DIR/server" "$PKI_DIR/clients-api"
+[[ -d "$PKI_DIR/mqtt"   && ! -d "$PKI_DIR/clients-mqtt" ]] && mv "$PKI_DIR/mqtt"   "$PKI_DIR/clients-mqtt"
+
+PKI_CLIENTS_API_DIR="$PKI_DIR/clients-api"
+PKI_CONF="$PKI_CLIENTS_API_DIR/pki.conf.txt"
 
 # The tool is called "whiptail" on the target system, "dialog" on macOS for
 # local testing. Both understand the same options, so a single fallback works.
@@ -87,11 +96,11 @@ if ! LE_EMAIL=$("$DIALOG" --title "PLP Server Setup" \
   exit 1
 fi
 
-CA_PEM="$PKI_SERVER_DIR/CA/ca.${DNAME}.pem"
+CA_PEM="$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.pem"
 if [[ -f "$CA_PEM" ]]; then
   CA_STATUS="CA already existed for '${DNAME}' — reused, not regenerated."
 else
-  ( cd "$PKI_SERVER_DIR" && ./make_ca.sh )
+  ( cd "$PKI_CLIENTS_API_DIR" && ./make_ca.sh )
   CA_STATUS="CA newly created for '${DNAME}'."
 fi
 
@@ -101,24 +110,26 @@ fi
 # dynamic ones plp-custom issues at runtime).
 
 # MQTT client CA (mosquitto's trust anchor for dynamically issued client
-# certificates). The port is a fixed application constant, not a per-customer
-# value, so it isn't asked for here — anyone needing a different port edits
-# pki-scripts/mqtt/pki.conf.txt directly.
-PKI_MQTT_DIR="$PKI_DIR/mqtt"
+# certificates) — independent of the clients-api CA above, see the
+# separation note in pki-scripts/clients-mqtt/pki.conf.txt. The port is a
+# fixed application constant, not a per-customer value, so it isn't asked
+# for here — anyone needing a different port edits
+# pki-scripts/clients-mqtt/pki.conf.txt directly.
+PKI_CLIENTS_MQTT_DIR="$PKI_DIR/clients-mqtt"
 MQTT_PORT=8883
 MQTT_DNAME="mqtt_${MQTT_PORT}"
-MQTT_CA_PEM="$PKI_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem"
+MQTT_CA_PEM="$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem"
 
 if [[ -f "$MQTT_CA_PEM" ]]; then
   MQTT_CA_STATUS="MQTT CA already existed for '${MQTT_DNAME}' — reused, not regenerated."
 else
-  ( cd "$PKI_MQTT_DIR" && ./make_ca.sh "$MQTT_PORT" )
+  ( cd "$PKI_CLIENTS_MQTT_DIR" && ./make_ca.sh "$MQTT_PORT" )
   MQTT_CA_STATUS="MQTT CA newly created for '${MQTT_DNAME}'."
 fi
 
 # --- client certificate (bootstrap .p12 for API access) --------------------
 
-CLIENT_P12_DIR="$PKI_SERVER_DIR/${DNAME}"
+CLIENT_P12_DIR="$PKI_CLIENTS_API_DIR/${DNAME}"
 CLIENT_P12_PATH="${CLIENT_P12_DIR}/${DNAME}.p12"
 
 if [[ -f "$CLIENT_P12_PATH" ]]; then
@@ -149,7 +160,7 @@ else
     break
   done
 
-  ( cd "$PKI_SERVER_DIR" && ./make_client.sh "$P12_PASS" )
+  ( cd "$PKI_CLIENTS_API_DIR" && ./make_client.sh "$P12_PASS" )
   CLIENT_CERT_STATUS="Client certificate created for '${DNAME}'."
   P12_PASSWORD_NOTE="$P12_PASS"
 fi
@@ -256,7 +267,7 @@ NGINX_CERTS_DIR=/etc/nginx/certs
 rm -rf "$NGINX_CERTS_DIR"
 mkdir -p "$NGINX_CERTS_DIR"
 
-cp "$PKI_SERVER_DIR/CA/ca.${DNAME}.pem" "$NGINX_CERTS_DIR/"
+cp "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.pem" "$NGINX_CERTS_DIR/"
 
 # server.crt/server.key are symlinks straight into Let's Encrypt's live
 # directory — not a copy — so a renewal (which replaces those symlinks
@@ -308,22 +319,31 @@ cp "$MOSQ_SRC_DIR/conf_8883.d/ssl.conf" /etc/mosquitto/conf_8883.d/ssl.conf
 # every renewal — rather than a symlink into /etc/letsencrypt/live. (Symlink
 # ownership/mode is irrelevant on Linux — access control always uses the
 # target file's own permissions — so only fullchain.pem/privkey.pem below
-# need an explicit chown/chmod; cert.crt/cert.key/bundle.crt don't.)
+# need an explicit chown/chmod; server.crt/server.key don't.) Named to match
+# nginx's server.crt/server.key exactly — same artifact, same role, same name.
+#
+# No "cafile" pointing at the clients-api CA here (an earlier version of
+# this installer had one, via a generically-named "bundle.crt") — that would
+# let an API bootstrap certificate also pass this broker's client-certificate
+# check, which defeats the whole point of clients-api and clients-mqtt being
+# separate CAs (see pki-scripts/clients-mqtt/pki.conf.txt). Trust for
+# incoming MQTT client certificates comes exclusively from the capath below.
 MOSQ_CERTS_DIR=/etc/mosquitto/certs
 mkdir -p "$MOSQ_CERTS_DIR"
-ln -sf "$NGINX_CERTS_DIR/ca.${DNAME}.pem" "$MOSQ_CERTS_DIR/bundle.crt"
-ln -sf fullchain.pem "$MOSQ_CERTS_DIR/cert.crt"
-ln -sf privkey.pem   "$MOSQ_CERTS_DIR/cert.key"
+rm -f "$MOSQ_CERTS_DIR/bundle.crt" "$MOSQ_CERTS_DIR/cert.crt" "$MOSQ_CERTS_DIR/cert.key"
+ln -sf fullchain.pem "$MOSQ_CERTS_DIR/server.crt"
+ln -sf privkey.pem   "$MOSQ_CERTS_DIR/server.key"
 cp "${LE_LIVE_DIR}/fullchain.pem" "${LE_LIVE_DIR}/privkey.pem" "$MOSQ_CERTS_DIR/"
 chown root:mosquitto "$MOSQ_CERTS_DIR/fullchain.pem" "$MOSQ_CERTS_DIR/privkey.pem"
 chmod 644 "$MOSQ_CERTS_DIR/fullchain.pem"
 chmod 640 "$MOSQ_CERTS_DIR/privkey.pem"
 
-# The MQTT client CA is copied into the canonical certs directory — same
-# pattern as the server cert — instead of pointing capath straight at the
-# PKI scripts' own output. nginx/certs stays the single distribution point
-# for all cert material; pki-scripts is just the factory that produces it.
-MQTT_CLIENT_CA_DIR="$NGINX_CERTS_DIR/client_ca/${MQTT_DNAME}"
+# The MQTT client CA is staged under mosquitto's own certs directory — not
+# nginx's, which has no functional relationship to it at all — instead of
+# pointing capath straight at the PKI scripts' own output. pki-scripts stays
+# just the factory that produces cert material; /etc/mosquitto/certs is
+# where mosquitto's own deployed copies live.
+MQTT_CLIENT_CA_DIR="$MOSQ_CERTS_DIR/client-ca/${MQTT_DNAME}"
 mkdir -p "$MQTT_CLIENT_CA_DIR"
 cp "$MQTT_CA_PEM" "$MQTT_CLIENT_CA_DIR/ca.${MQTT_DNAME}.pem"
 
@@ -482,8 +502,8 @@ sed -i "s|^pl\.core\.jwt=.*|pl.core.jwt=${PL_CORE_JWT}|" "$CUSTOM_DIR/applicatio
 # client CA's key (bootstrap client certs; this CA no longer signs a server
 # certificate, see the pki.conf.txt comment) and the MQTT CA's key+cert
 # (dynamically issued MQTT client certs) — same set as on hmx.
-cp "$PKI_SERVER_DIR/CA/ca.${DNAME}.key" "$CUSTOM_DIR/certs/CA/"
-cp "$PKI_MQTT_DIR/CA/ca.${MQTT_DNAME}.key" "$PKI_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem" "$CUSTOM_DIR/certs/CA/"
+cp "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$CUSTOM_DIR/certs/CA/"
+cp "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem" "$CUSTOM_DIR/certs/CA/"
 
 chown -R phraselock:phraselock "$CUSTOM_DIR"
 chmod 600 "$CUSTOM_DIR/certs/CA/"*.key

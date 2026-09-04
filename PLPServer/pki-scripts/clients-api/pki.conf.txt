@@ -11,16 +11,23 @@
 # CN of this PKI instance. The CA file basename (ca.<dname>) and the
 # client certificates (make_client.sh) use the same value.
 #
-# This PKI's CA no longer signs the server's TLS certificate — that one
-# now comes from Let's Encrypt (see install.sh), because clients (notably
-# iOS 26+) stopped accepting self-signed server certificates. This CA is
-# kept only for issuing client certificates (mTLS: the bootstrap .p12 for
-# API access, and dynamically issued client certs from plp-custom) — so
-# dname must still match the server's public domain, since that's the CN
-# those client certs are issued under, but it must now be an actual domain
-# name (Let's Encrypt cannot certify a bare IP). make_server.sh is left in
-# place for reference/manual/offline use (e.g. LAN-only deployments with no
-# public DNS), but install.sh no longer calls it.
+# This directory is named "clients-api" (not "server") because that's all
+# this CA does now: it signs the mTLS client certificates used for API
+# access (the bootstrap .p12 here, plus the ones plp-custom issues
+# dynamically at runtime) — it no longer signs this server's own TLS
+# certificate. That one now comes from Let's Encrypt (see install.sh),
+# because clients (notably iOS 26+) stopped accepting self-signed server
+# certificates. dname must still match the server's public domain, since
+# that's the CN those client certs are issued under, but it must now be an
+# actual domain name (Let's Encrypt cannot certify a bare IP). make_server.sh
+# is left in place for reference/manual/offline use (e.g. LAN-only
+# deployments with no public DNS, where this CA can still sign both its own
+# server and client certificates), but install.sh no longer calls it.
+#
+# See also pki-scripts/clients-mqtt/ next door — a separate, independent CA
+# for a different credential (MQTT broker client auth, not API access).
+# Keep the two apart: a client holding one of these certs must not be able
+# to authenticate as the other.
 dname      = [Enter a valid public domain name]
 
 # Path to the CA directory (key + certificate of the root CA)

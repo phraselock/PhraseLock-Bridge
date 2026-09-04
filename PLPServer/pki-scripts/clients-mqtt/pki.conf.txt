@@ -2,17 +2,25 @@
 # Central PKI configuration
 #
 # Single place to maintain CN/IP and subject data. Read by common.sh and
-# shared by all three wrapper scripts (make_ca.sh, make_client.sh).
+# shared by both wrapper scripts (make_ca.sh, make_client.sh).
 # ============================================================
 
 [ metadata ]
 
+# This CA signs exactly one kind of credential: mTLS client certificates
+# that authenticate against the mosquitto MQTT broker (mosquitto's capath
+# trust anchor, wired up in install.sh). It is independent of
+# pki-scripts/clients-api/'s CA (API access) — a client holding an API
+# bootstrap certificate must not thereby also pass the MQTT broker's client
+# certificate check, and vice versa. There is no server-cert role here at
+# all: the broker's own TLS certificate comes from Let's Encrypt.
+#
 # Base name for multi-tenant setups with several Mosquitto instances on
-# different ports (one port = one tenant = its own CA/server/client
-# certificate chain). Instead of a fixed "dname", "dname_base" is used
-# here; the resulting dname is "<dname_base>_<port>" and is built by the
-# scripts at runtime – the port MUST therefore be passed as the first
-# argument on every call to make_ca.sh / make_client.sh.
+# different ports (one port = one tenant = its own CA/client certificate
+# chain). Instead of a fixed "dname", "dname_base" is used here; the
+# resulting dname is "<dname_base>_<port>" and is built by the scripts at
+# runtime – the port MUST therefore be passed as the first argument on
+# every call to make_ca.sh / make_client.sh.
 # Example: port 8883 -> dname = mqtt_8883
 dname_base = mqtt
 
