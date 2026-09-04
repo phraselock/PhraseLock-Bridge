@@ -30,6 +30,12 @@ This needs to be imported on any PC/Mac that should be able to call this
 server's /api/ (e.g. an admin's or technician's machine). Password: see
 credentials.txt next to this file.
 
+Note: this bootstrap certificate is only used once, during initial
+setup/pairing — the client app uses it to authenticate itself the first
+time, and the server then issues a fresh, dynamic client certificate for
+all ongoing use. It stopping being used afterward is expected, not a
+sign anything broke.
+
 !! IMPORTANT: client apps look up this specific certificate in the OS
 credential store — they don't just use "any" certificate that happens to
 be present. Import it to the wrong store/location (see below) and the
