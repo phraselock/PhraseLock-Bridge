@@ -256,7 +256,7 @@ flowchart TD
         SCA[API client CA]
         SCA --> P12["Bootstrap client .p12<br/>(make_client.sh)"]
     end
-    P12 -->|you copy this| PCMac["PC / Mac certificate store<br/>(Current User / login keychain)"]
+    P12 -->|you copy this| PCMac["PC / Mac certificate store<br/>(Local Machine / login keychain)"]
 
     subgraph SM["PLPServer/pki-scripts/clients-mqtt"]
         MCA[MQTT client CA]
@@ -344,7 +344,9 @@ issuing the certificate; a bare IP address no longer works, unlike before),
 an e-mail address for Let's Encrypt renewal notices, an MQTT broker
 username/password, and a password to protect the generated client `.p12`.
 See `/opt/phraselock/README.txt` afterward for how to import the `.p12`
-certificate (Windows: "Current User" store; Mac: "login" keychain).
+certificate (Windows: "Local Machine" store — the client runs as a
+service with admin rights, available at the lock screen before login;
+Mac: "login" keychain).
 
 > [!WARNING]
 > **The `pl.core.jwt` token install.sh fetches automatically is
@@ -358,9 +360,11 @@ certificate (Windows: "Current User" store; Mac: "login" keychain).
 
 > [!WARNING]
 > **Import the bootstrap client `.p12` to the exact store/location**
-> called out in `/opt/phraselock/README.txt` — "Current User" on Windows,
-> the "login" keychain on Mac, never "Local Machine"/"System". Get this
-> wrong and client apps simply won't find the certificate, with no obvious
+> called out in `/opt/phraselock/README.txt` — "Local Machine" on Windows
+> (the client runs as an admin-rights service, available at the lock
+> screen before login — not "Current User"), the "login" keychain on Mac.
+> Get this wrong and client apps simply won't find the certificate, with
+> no obvious
 > error pointing back to the import step.
 
 ## PLPProxyServer

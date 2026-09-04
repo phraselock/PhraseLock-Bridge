@@ -46,10 +46,11 @@ explicitly, since plain "curl"/"scp" may be aliased to something else):
 
 Importing on Windows:
   - Double-click the .p12 file, or import via certmgr.msc.
-  - Store location: "Current User" — not "Local Machine". Current User
-    matches how browsers and most client apps look up certificates by
-    default; Local Machine needs admin rights and is usually the wrong
-    choice here.
+  - Store location: "Local Machine" — not "Current User". The PhraseLock
+    client on Windows runs as a service with admin rights (it has to be
+    available at the lock screen, before any user is logged in), so it
+    reads the machine-wide store, not a per-user one. This does need admin
+    rights during import (elevated certmgr.msc/import wizard).
 
 Importing on Mac:
   - Double-click the .p12 file, or use Keychain Access > File > Import.
