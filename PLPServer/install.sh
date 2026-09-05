@@ -47,11 +47,30 @@ CURRENT_DNAME=$(grep "^[[:space:]]*dname[[:space:]]*=" "$PKI_CONF" | head -n1 | 
 # placeholder text.
 PLACEHOLDER="[Enter a valid public domain name]"
 
+# Never pre-fill the inputbox with the literal placeholder text — clearing
+# pre-filled text in whiptail can be fiddly depending on terminal/keyboard
+# setup, and a real case we hit: leftover placeholder fragments (e.g. the
+# "[" / "]") got typed together with the real domain, produced a garbage
+# DNAME that slipped past the checks below (neither empty, nor an exact
+# placeholder match, nor a bare IPv4), and only surfaced as an opaque
+# certbot failure much later. Starting empty on a fresh config sidesteps
+# the whole problem; a previously-configured real domain is still offered
+# as the default on a repeat run, same as before.
+DNAME_DEFAULT="$CURRENT_DNAME"
+[[ "$DNAME_DEFAULT" == "$PLACEHOLDER" ]] && DNAME_DEFAULT=""
+
 # Let's Encrypt cannot issue a certificate for a bare IP address (only for
 # DNS names), so — unlike the old self-signed flow — dname must now be an
 # actual domain that already resolves to this server. Rejected with the
 # same regex used elsewhere in the PKI scripts to detect IPv4 literals.
 IPV4_RE='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
+
+# Basic FQDN shape check (labels of alnum/hyphen, dot-separated, ending in
+# a letters-only TLD-like label) — catches garbage input (leftover
+# placeholder fragments, stray brackets/spaces from a botched edit, etc.)
+# here instead of letting it reach certbot and fail with a confusing error
+# far downstream.
+FQDN_RE='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
 
 # whiptail/dialog write the user's input to stderr (fd 2), not stdout — the
 # "3>&1 1>&2 2>&3" trick briefly swaps the file descriptors so that $(...)
@@ -59,7 +78,7 @@ IPV4_RE='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 while :; do
   if ! DNAME=$("$DIALOG" --title "PLP Server Setup" \
     --inputbox "Public domain name (FQDN) of this server.\n\nMust already point here via DNS (A/AAAA record) — Let's Encrypt validates ownership over HTTP on port 80 before issuing the certificate:" 14 70 \
-    "$CURRENT_DNAME" \
+    "$DNAME_DEFAULT" \
     3>&1 1>&2 2>&3); then
     echo "Aborted (Cancel/Esc)." >&2
     exit 1
@@ -72,6 +91,11 @@ while :; do
   if [[ "$DNAME" =~ $IPV4_RE ]]; then
     "$DIALOG" --title "PLP Server Setup" --msgbox \
       "Let's Encrypt cannot issue a certificate for a bare IP address.\nPlease enter a domain name that resolves to this server instead." 9 70
+    continue
+  fi
+  if ! [[ "$DNAME" =~ $FQDN_RE ]]; then
+    "$DIALOG" --title "PLP Server Setup" --msgbox \
+      "'${DNAME}' doesn't look like a valid domain name (unexpected characters or format — e.g. leftover [ ] from the placeholder?). Please clear the field completely and re-type the domain." 10 70
     continue
   fi
   break
