@@ -574,13 +574,7 @@ sed -e "s|__P12_PASSWORD__|${P12_PASSWORD_NOTE}|g" \
 chmod 600 /opt/phraselock/credentials.txt
 
 # Summary as a confirm-with-OK dialog instead of scrolling terminal output,
-# which is easy to miss once whiptail redraws the screen. The wall of
-# "already existed / reused" status lines above can read as "everything is
-# just done" — the ACTION NEEDED block below is deliberately loud so the
-# two things that still need a human (cert import, permanent JWT) don't get
-# lost in it. File paths are deliberately NOT inlined here (only referenced
-# via README.txt) since a long domain-based path can overflow this
-# fixed-width dialog with no wrap point.
+# which is easy to miss once whiptail redraws the screen.
 "$DIALOG" --title "PLP Server Setup" --msgbox \
 "${CA_STATUS}
 ${LE_STATUS}
@@ -598,17 +592,26 @@ ${JAVA_STATUS}
 ${CUSTOM_STATUS}
 ${JWT_STATUS}
 
-============================================================
-ACTION NEEDED — not fully usable yet without these two steps:
-============================================================
+See /opt/phraselock/README.txt for how to import the client certificate,
+and /opt/phraselock/credentials.txt for its password." 28 78
+
+# A second, separate, deliberately short dialog for the two post-install
+# action items — NOT appended to the summary above. That summary is a wall
+# of "already existed / reused" status lines long enough to scroll off a
+# small terminal, and content past what fits vertically can end up
+# effectively invisible even though the dialog itself "succeeded" (a real
+# case we hit: only the first dialog was visible, the rest below it
+# wasn't). A short dialog of its own is short enough to always fit, and
+# still requires its own explicit OK, so it can't be skipped past by
+# muscle-memory-dismissing the first one. File paths are deliberately NOT
+# inlined here (only referenced via README.txt) since a long domain-based
+# path can overflow this fixed-width dialog with no wrap point.
+"$DIALOG" --title "PLP Server Setup — Installation successful" --msgbox \
+"Installation successful — but NOT fully usable yet without these two
+manual steps. Both are explained in /opt/phraselock/README.txt.
+
 1) Import the client certificate (.p12) on any PC/Mac that needs
-   API access. Path, password and store-location all matter — see
-   /opt/phraselock/README.txt.
+   API access. Path, password and store-location all matter.
 
 2) The plp-core token just installed is TEMPORARY and WILL expire.
-   Request a permanent one from PhraseLock — see
-   /opt/phraselock/README.txt for where to put it.
-
-Full details, including exact file paths, in:
-  /opt/phraselock/README.txt
-  /opt/phraselock/credentials.txt (passwords)" 36 78
+   Request a permanent one from PhraseLock." 16 74
