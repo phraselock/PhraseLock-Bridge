@@ -199,6 +199,21 @@ fi
 DEBIAN_FRONTEND=noninteractive apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
 
+# nginx's default server_names_hash_bucket_size is too small for a long
+# server_name — a real case we hit: a 51-character UUID-based subdomain
+# failed nginx -t with "could not build server_names_hash, you should
+# increase server_names_hash_bucket_size". This is an http{}-level setting,
+# can't be set inside a server{} block, so it can't just go in
+# phraselock.conf/phraselock_80.conf — Debian's stock nginx.conf already
+# includes /etc/nginx/conf.d/*.conf from within http{}, so a small file
+# there is the least invasive way in without editing nginx.conf itself.
+# 128 rather than the 64 nginx actually asked for, for headroom against
+# future even-longer domains.
+mkdir -p /etc/nginx/conf.d
+cat > /etc/nginx/conf.d/phraselock-hash-bucket.conf << 'EOF'
+server_names_hash_bucket_size 128;
+EOF
+
 # Sites this installer doesn't manage: drop the Debian sample entirely, only
 # disable (don't delete) the stock default so it stays available as a
 # reference but no longer conflicts with silent-drop.conf's default_server.

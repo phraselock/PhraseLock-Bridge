@@ -29,6 +29,7 @@ rm -f /etc/mosquitto/.passwd_8883
 
 rm -f /etc/nginx/sites-enabled/phraselock.conf /etc/nginx/sites-enabled/silent-drop.conf /etc/nginx/sites-enabled/phraselock_80.conf
 rm -f /etc/nginx/sites-available/phraselock.conf /etc/nginx/sites-available/silent-drop.conf /etc/nginx/sites-available/phraselock_80.conf
+rm -f /etc/nginx/conf.d/phraselock-hash-bucket.conf
 rm -rf /etc/nginx/certs
 rm -rf /var/www/certbot
 
