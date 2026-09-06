@@ -541,11 +541,29 @@ sed -i "s|^pl\.core\.jwt=.*|pl.core.jwt=${PL_CORE_JWT}|" "$CUSTOM_DIR/applicatio
 # client CA's key (bootstrap client certs; this CA no longer signs a server
 # certificate, see the pki.conf.txt comment) and the MQTT CA's key+cert
 # (dynamically issued MQTT client certs) — same set as on hmx.
-cp "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$CUSTOM_DIR/certs/CA/"
-cp "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem" "$CUSTOM_DIR/certs/CA/"
+#
+# Symlinked, not copied: unlike the Let's Encrypt server cert (kept in sync
+# automatically by the renewal deploy-hooks), a copy here has no re-sync
+# mechanism at all — if this CA ever changes and someone forgets to
+# re-copy, the resulting mismatch is invisible from the filenames alone
+# and painful to debug. A symlink means plp-custom always sees whatever is
+# actually under pki-scripts, nothing to remember.
+#
+# make_ca.sh leaves the CA key root:root 600 — group-readable by
+# "phraselock" here so plp-custom (which runs as that unprivileged user)
+# can read it through the symlink without loosening access to "world".
+chgrp phraselock "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key"
+chmod 640 "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key"
 
+ln -sf "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$CUSTOM_DIR/certs/CA/"
+ln -sf "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem" "$CUSTOM_DIR/certs/CA/"
+
+# -R here does NOT dereference symlinks during traversal (that's the
+# default without -H/-L), so this only touches the symlinks themselves
+# (irrelevant on Linux — access control uses the target's own permissions)
+# and genuinely-owned files under $CUSTOM_DIR, never the CA keys' actual
+# root:phraselock 640 ownership set above.
 chown -R phraselock:phraselock "$CUSTOM_DIR"
-chmod 600 "$CUSTOM_DIR/certs/CA/"*.key
 
 cp "$CUSTOM_SRC_DIR/plp-custom.service" "$CUSTOM_DIR/plp-custom.service"
 ln -sf "$CUSTOM_DIR/plp-custom.service" /etc/systemd/system/plp-custom.service

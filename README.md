@@ -125,9 +125,9 @@ certificate/key never has to exist twice.
     ├── application.properties
     ├── plp-custom.service
     └── certs/CA/
-        ├── ca.<dname>.key           (copy — plp-custom issues bootstrap certs)
-        ├── ca.mqtt_8883.key         (copy — plp-custom issues MQTT client certs)
-        └── ca.mqtt_8883.pem
+        ├── ca.<dname>.key → /opt/phraselock/pki-scripts/clients-api/CA/ca.<dname>.key
+        ├── ca.mqtt_8883.key → /opt/phraselock/pki-scripts/clients-mqtt/CA/ca.mqtt_8883.key
+        └── ca.mqtt_8883.pem → /opt/phraselock/pki-scripts/clients-mqtt/CA/ca.mqtt_8883.pem
 
 /etc/letsencrypt/                    (managed by certbot — the actual server certificate)
 ├── live/<dname>/{fullchain,privkey,cert,chain}.pem
