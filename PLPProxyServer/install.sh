@@ -119,25 +119,32 @@ fi
 # --- certs ---------------------------------------------------------------
 
 # frps runs as the generic "nobody" user, which has no dedicated group to
-# grant narrower access to, so the server key's copy is world-readable
-# (matches the reference deployment; PLPServer's own key stays group-
-# restricted since that one has a real dedicated group to use). The CA
-# cert has no such permission barrier (public, and root reads it anyway),
-# so it's symlinked straight to the pki-scripts source instead of copied —
-# nothing to keep in sync, `ls -la` shows exactly where it comes from.
+# grant narrower access to, so its key needs a world-readable copy
+# somewhere (PLPServer's own keys stay group-restricted instead, since
+# those consumers have a real dedicated group to use). That copy lives
+# right next to its source under pki-scripts, clearly marked by name —
+# not hidden away in /etc/frp/certs where it would be indistinguishable
+# from an original. Regenerated on every run since make_server.sh (above)
+# reissues the server cert+key every time too.
+FRP_KEY_WORLD_READABLE="$PKI_SERVER_DIR/server/${DNAME}.key.world-readable"
+cp "$PKI_SERVER_DIR/server/${DNAME}.key" "$FRP_KEY_WORLD_READABLE"
+chmod 644 "$FRP_KEY_WORLD_READABLE"
+
+# Everything under /etc/frp/certs is a symlink, nothing copied — the cert
+# and CA have no permission barrier (public, root reads them anyway), and
+# the key points at the world-readable copy just made above. `ls -la` here
+# always shows exactly where each file actually comes from.
 FRP_CERTS_DIR=/etc/frp/certs
 mkdir -p "$FRP_CERTS_DIR"
-# Migration: an older version of this installer copied the CA cert in here
-# under this name before symlinking ca.crt to it — now ca.crt (below)
-# points straight at pki-scripts, so this leftover copy is unused.
-rm -f "$FRP_CERTS_DIR/ca.${DNAME}.pem"
+# Migration: older versions of this installer copied cert/key/CA directly
+# into here under these names before symlinking server.crt/server.key/
+# ca.crt to them — now all three point straight at pki-scripts, so these
+# leftover copies are unused.
+rm -f "$FRP_CERTS_DIR/${DNAME}.crt" "$FRP_CERTS_DIR/${DNAME}.key" "$FRP_CERTS_DIR/ca.${DNAME}.pem"
 
-cp "$PKI_SERVER_DIR/server/${DNAME}.crt" "$PKI_SERVER_DIR/server/${DNAME}.key" "$FRP_CERTS_DIR/"
-chmod 644 "$FRP_CERTS_DIR/${DNAME}.key"
-
-ln -sf "${DNAME}.crt"    "$FRP_CERTS_DIR/server.crt"
-ln -sf "${DNAME}.key"    "$FRP_CERTS_DIR/server.key"
-ln -sf "$PKI_SERVER_DIR/CA/ca.${DNAME}.pem" "$FRP_CERTS_DIR/ca.crt"
+ln -sf "$PKI_SERVER_DIR/server/${DNAME}.crt" "$FRP_CERTS_DIR/server.crt"
+ln -sf "$FRP_KEY_WORLD_READABLE"             "$FRP_CERTS_DIR/server.key"
+ln -sf "$PKI_SERVER_DIR/CA/ca.${DNAME}.pem"  "$FRP_CERTS_DIR/ca.crt"
 
 # --- frps.toml / auth token ------------------------------------------------
 

@@ -371,6 +371,10 @@ cp "$MOSQ_SRC_DIR/conf_8883.d/ssl.conf" /etc/mosquitto/conf_8883.d/ssl.conf
 # incoming MQTT client certificates comes exclusively from the capath below.
 MOSQ_CERTS_DIR=/etc/mosquitto/certs
 mkdir -p "$MOSQ_CERTS_DIR"
+# Overwrites the generic README the mosquitto package ships here — spells
+# out that fullchain.pem/privkey.pem below are a copy, not an original, and
+# where the actual source of truth for everything in this directory lives.
+cp "$MOSQ_SRC_DIR/certs-README.txt" "$MOSQ_CERTS_DIR/README"
 rm -f "$MOSQ_CERTS_DIR/bundle.crt" "$MOSQ_CERTS_DIR/cert.crt" "$MOSQ_CERTS_DIR/cert.key"
 # Migration: an older version of this installer staged a copy of the MQTT
 # client CA under here before symlinking capath to it — now capath points
