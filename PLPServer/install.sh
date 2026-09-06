@@ -306,16 +306,18 @@ NGINX_CERTS_DIR=/etc/nginx/certs
 rm -rf "$NGINX_CERTS_DIR"
 mkdir -p "$NGINX_CERTS_DIR"
 
-cp "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.pem" "$NGINX_CERTS_DIR/"
-
 # server.crt/server.key are symlinks straight into Let's Encrypt's live
 # directory — not a copy — so a renewal (which replaces those symlinks
 # atomically) is picked up by a plain reload, no re-copy needed. This is
 # safe for nginx specifically because its master process, which reads the
-# TLS private key before dropping privileges, still runs as root.
-ln -sf "${LE_LIVE_DIR}/fullchain.pem" "$NGINX_CERTS_DIR/server.crt"
-ln -sf "${LE_LIVE_DIR}/privkey.pem"   "$NGINX_CERTS_DIR/server.key"
-ln -sf "ca.${DNAME}.pem"              "$NGINX_CERTS_DIR/ca.client.pem"
+# TLS private key before dropping privileges, still runs as root. Same
+# reasoning for ca.client.pem: a public cert, no permission barrier, no
+# reason to duplicate it — symlinked straight to the pki-scripts source
+# instead of a local copy, so `ls -la` immediately shows where it actually
+# comes from instead of leaving that ambiguous.
+ln -sf "${LE_LIVE_DIR}/fullchain.pem"                    "$NGINX_CERTS_DIR/server.crt"
+ln -sf "${LE_LIVE_DIR}/privkey.pem"                      "$NGINX_CERTS_DIR/server.key"
+ln -sf "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.pem"         "$NGINX_CERTS_DIR/ca.client.pem"
 
 sed "s|server_name .*;|server_name ${DNAME};|" \
   "$SITES_SRC_DIR/phraselock.conf" > /etc/nginx/sites-available/phraselock.conf
@@ -370,6 +372,10 @@ cp "$MOSQ_SRC_DIR/conf_8883.d/ssl.conf" /etc/mosquitto/conf_8883.d/ssl.conf
 MOSQ_CERTS_DIR=/etc/mosquitto/certs
 mkdir -p "$MOSQ_CERTS_DIR"
 rm -f "$MOSQ_CERTS_DIR/bundle.crt" "$MOSQ_CERTS_DIR/cert.crt" "$MOSQ_CERTS_DIR/cert.key"
+# Migration: an older version of this installer staged a copy of the MQTT
+# client CA under here before symlinking capath to it — now capath points
+# straight at pki-scripts (see below), so this leftover copy is unused.
+rm -rf "$MOSQ_CERTS_DIR/client-ca"
 ln -sf fullchain.pem "$MOSQ_CERTS_DIR/server.crt"
 ln -sf privkey.pem   "$MOSQ_CERTS_DIR/server.key"
 cp "${LE_LIVE_DIR}/fullchain.pem" "${LE_LIVE_DIR}/privkey.pem" "$MOSQ_CERTS_DIR/"
@@ -377,21 +383,16 @@ chown root:mosquitto "$MOSQ_CERTS_DIR/fullchain.pem" "$MOSQ_CERTS_DIR/privkey.pe
 chmod 644 "$MOSQ_CERTS_DIR/fullchain.pem"
 chmod 640 "$MOSQ_CERTS_DIR/privkey.pem"
 
-# The MQTT client CA is staged under mosquitto's own certs directory — not
-# nginx's, which has no functional relationship to it at all — instead of
-# pointing capath straight at the PKI scripts' own output. pki-scripts stays
-# just the factory that produces cert material; /etc/mosquitto/certs is
-# where mosquitto's own deployed copies live.
-MQTT_CLIENT_CA_DIR="$MOSQ_CERTS_DIR/client-ca/${MQTT_DNAME}"
-mkdir -p "$MQTT_CLIENT_CA_DIR"
-cp "$MQTT_CA_PEM" "$MQTT_CLIENT_CA_DIR/ca.${MQTT_DNAME}.pem"
-
-# Register that CA in mosquitto's capath trust store, so it accepts client
-# certificates dynamically issued against it.
+# Register the MQTT client CA in mosquitto's capath trust store (so it
+# accepts client certificates dynamically issued against it) — pointed
+# straight at the pki-scripts source (a public cert, no permission
+# barrier), no staging copy in between. add-client-ca.sh itself only ever
+# creates a hash-named symlink, so this is symlinks all the way down: no
+# real duplicate of this file exists anywhere outside pki-scripts.
 mkdir -p /etc/mosquitto/client-ca.8883.d
 cp "$MOSQ_SRC_DIR/add-client-ca.sh" /etc/mosquitto/client-ca.8883.d/add-client-ca.sh
 chmod +x /etc/mosquitto/client-ca.8883.d/add-client-ca.sh
-( cd /etc/mosquitto/client-ca.8883.d && ./add-client-ca.sh "$MQTT_CLIENT_CA_DIR/ca.${MQTT_DNAME}.pem" )
+( cd /etc/mosquitto/client-ca.8883.d && ./add-client-ca.sh "$MQTT_CA_PEM" )
 chown -R mosquitto:mosquitto /etc/mosquitto/client-ca.8883.d
 
 # Broker login for MQTT clients on 8883 — only asked once; an existing

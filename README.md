@@ -142,10 +142,9 @@ certificate/key never has to exist twice.
 
 /etc/nginx/
 ├── certs/
-│   ├── ca.<dname>.pem
 │   ├── server.crt → /etc/letsencrypt/live/<dname>/fullchain.pem
 │   ├── server.key → /etc/letsencrypt/live/<dname>/privkey.pem
-│   └── ca.client.pem → ca.<dname>.pem
+│   └── ca.client.pem → /opt/phraselock/pki-scripts/clients-api/CA/ca.<dname>.pem
 ├── sites-available/
 │   ├── phraselock_80.conf           (ACME HTTP-01 challenge vhost)
 │   ├── phraselock.conf              (mTLS API reverse proxy)
@@ -163,11 +162,10 @@ certificate/key never has to exist twice.
 ├── certs/
 │   ├── fullchain.pem, privkey.pem   (own copy — mosquitto can't read /etc/letsencrypt in place)
 │   ├── server.crt → fullchain.pem
-│   ├── server.key → privkey.pem
-│   └── client-ca/mqtt_8883/ca.mqtt_8883.pem  (copy, registered with mosquitto below)
+│   └── server.key → privkey.pem
 ├── client-ca.8883.d/
 │   ├── add-client-ca.sh
-│   └── <hash>.0 → /etc/mosquitto/certs/client-ca/mqtt_8883/ca.mqtt_8883.pem
+│   └── <hash>.0 → /opt/phraselock/pki-scripts/clients-mqtt/CA/ca.mqtt_8883.pem
 └── .passwd_8883
 
 /etc/systemd/system/plp-custom.service → /opt/phraselock/custom/plp-custom.service
@@ -200,10 +198,9 @@ Note what's *not* here: an `/etc/nginx/certs/<dname>.crt`-style self-signed serv
 └── certs/
     ├── <dname>.crt
     ├── <dname>.key
-    ├── ca.<dname>.pem
     ├── server.crt → <dname>.crt
     ├── server.key → <dname>.key
-    └── ca.crt → ca.<dname>.pem
+    └── ca.crt → /opt/phraselock/pki-scripts-proxy/server/CA/ca.<dname>.pem
 
 /etc/nginx/nginx.conf                # stream{} forward only — replaces the stock file
 /etc/systemd/system/frps.service → /etc/frp/frps.service

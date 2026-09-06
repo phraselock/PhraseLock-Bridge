@@ -118,21 +118,26 @@ fi
 
 # --- certs ---------------------------------------------------------------
 
-# Own copy under /etc/frp/certs, rather than pointing at PLPServer's nginx
-# certs — frps runs as the generic "nobody" user, which has no dedicated
-# group to grant narrower access to, so this copy's key is world-readable
+# frps runs as the generic "nobody" user, which has no dedicated group to
+# grant narrower access to, so the server key's copy is world-readable
 # (matches the reference deployment; PLPServer's own key stays group-
-# restricted since that one has a real dedicated group to use).
+# restricted since that one has a real dedicated group to use). The CA
+# cert has no such permission barrier (public, and root reads it anyway),
+# so it's symlinked straight to the pki-scripts source instead of copied —
+# nothing to keep in sync, `ls -la` shows exactly where it comes from.
 FRP_CERTS_DIR=/etc/frp/certs
 mkdir -p "$FRP_CERTS_DIR"
+# Migration: an older version of this installer copied the CA cert in here
+# under this name before symlinking ca.crt to it — now ca.crt (below)
+# points straight at pki-scripts, so this leftover copy is unused.
+rm -f "$FRP_CERTS_DIR/ca.${DNAME}.pem"
 
-cp "$PKI_SERVER_DIR/CA/ca.${DNAME}.pem" "$FRP_CERTS_DIR/"
 cp "$PKI_SERVER_DIR/server/${DNAME}.crt" "$PKI_SERVER_DIR/server/${DNAME}.key" "$FRP_CERTS_DIR/"
 chmod 644 "$FRP_CERTS_DIR/${DNAME}.key"
 
 ln -sf "${DNAME}.crt"    "$FRP_CERTS_DIR/server.crt"
 ln -sf "${DNAME}.key"    "$FRP_CERTS_DIR/server.key"
-ln -sf "ca.${DNAME}.pem" "$FRP_CERTS_DIR/ca.crt"
+ln -sf "$PKI_SERVER_DIR/CA/ca.${DNAME}.pem" "$FRP_CERTS_DIR/ca.crt"
 
 # --- frps.toml / auth token ------------------------------------------------
 
