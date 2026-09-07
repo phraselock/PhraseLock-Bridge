@@ -30,6 +30,14 @@ PKI_CONF="$PKI_CLIENTS_API_DIR/pki.conf.txt"
 # local testing. Both understand the same options, so a single fallback works.
 DIALOG=$(command -v whiptail || command -v dialog)
 
+# Strips a trailing \r some terminals/whiptail leave on captured Enter-
+# confirmed input: "$()" strips trailing \n but not a \r right before it,
+# so "value\r\n" survives capture as "value\r" — a real case hit in
+# plp-backend's installer, it broke a generated nginx line with an
+# invisible embedded CR. Applied to every dialog-captured value below, and
+# to values read back out of already-written config files.
+strip_cr() { printf '%s' "${1%$'\r'}"; }
+
 # README.txt goes to its permanent home right away, before anything below
 # can fail — /tmp (where this installer was extracted) is only a staging
 # area. Overwritten at the end with real values once they're known.
@@ -39,7 +47,7 @@ cp "$SCRIPT_DIR/README.txt" /opt/phraselock/README.txt
 # Read the current dname value from pki.conf.txt as the default — the same
 # file is where the answer gets persisted below, so a repeated run offers it
 # again automatically.
-CURRENT_DNAME=$(grep "^[[:space:]]*dname[[:space:]]*=" "$PKI_CONF" | head -n1 | cut -d'=' -f2- | xargs)
+CURRENT_DNAME=$(grep "^[[:space:]]*dname[[:space:]]*=" "$PKI_CONF" | head -n1 | cut -d'=' -f2- | tr -d '\r' | xargs)
 
 # On a fresh install, pki.conf.txt ships with this bracketed placeholder
 # instead of a real value — reject it (and an empty answer) so a customer
@@ -111,7 +119,7 @@ rm -f "${PKI_CONF}.bak"
 # Used only for certbot's expiry/problem notifications, not for the CA/client
 # certificate subject — defaults to the PKI's subj_email so most installs
 # don't need to type anything here.
-CURRENT_LE_EMAIL=$(grep "^[[:space:]]*subj_email[[:space:]]*=" "$PKI_CONF" | head -n1 | cut -d'=' -f2- | xargs)
+CURRENT_LE_EMAIL=$(grep "^[[:space:]]*subj_email[[:space:]]*=" "$PKI_CONF" | head -n1 | cut -d'=' -f2- | tr -d '\r' | xargs)
 if ! LE_EMAIL=$("$DIALOG" --title "PLP Server Setup" \
     --inputbox "E-mail address for Let's Encrypt renewal/expiry notices:" 10 65 \
     "$CURRENT_LE_EMAIL" \
@@ -119,6 +127,7 @@ if ! LE_EMAIL=$("$DIALOG" --title "PLP Server Setup" \
   echo "Aborted (Cancel/Esc)." >&2
   exit 1
 fi
+LE_EMAIL=$(strip_cr "$LE_EMAIL")
 
 CA_PEM="$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.pem"
 if [[ -f "$CA_PEM" ]]; then
@@ -168,11 +177,13 @@ else
       echo "Aborted (Cancel/Esc)." >&2
       exit 1
     fi
+    P12_PASS=$(strip_cr "$P12_PASS")
     if ! P12_PASS_CONFIRM=$("$DIALOG" --title "PLP Server Setup" --passwordbox \
       "Confirm password:" 10 60 3>&1 1>&2 2>&3); then
       echo "Aborted (Cancel/Esc)." >&2
       exit 1
     fi
+    P12_PASS_CONFIRM=$(strip_cr "$P12_PASS_CONFIRM")
     if [[ -z "$P12_PASS" ]]; then
       "$DIALOG" --title "PLP Server Setup" --msgbox "Password must not be empty." 8 60
       continue
@@ -407,6 +418,7 @@ if [[ ! -f /etc/mosquitto/.passwd_8883 ]]; then
     echo "Aborted (Cancel/Esc)." >&2
     exit 1
   fi
+  MQTT_USER=$(strip_cr "$MQTT_USER")
 
   # Confirmed twice — a typo here would silently lock the broker's actual
   # credential behind a password nobody knows, so this must not proceed
@@ -417,11 +429,13 @@ if [[ ! -f /etc/mosquitto/.passwd_8883 ]]; then
       echo "Aborted (Cancel/Esc)." >&2
       exit 1
     fi
+    MQTT_PASS=$(strip_cr "$MQTT_PASS")
     if ! MQTT_PASS_CONFIRM=$("$DIALOG" --title "PLP Server Setup" --passwordbox \
       "Confirm MQTT password for '${MQTT_USER}':" 10 60 3>&1 1>&2 2>&3); then
       echo "Aborted (Cancel/Esc)." >&2
       exit 1
     fi
+    MQTT_PASS_CONFIRM=$(strip_cr "$MQTT_PASS_CONFIRM")
     if [[ -z "$MQTT_PASS" ]]; then
       "$DIALOG" --title "PLP Server Setup" --msgbox "Password must not be empty." 8 60
       continue
@@ -510,7 +524,7 @@ base64url_decode() {
 
 EXISTING_JWT=""
 if [[ -f "$CUSTOM_DIR/application.properties" ]]; then
-  EXISTING_JWT=$(grep -E '^pl\.core\.jwt=' "$CUSTOM_DIR/application.properties" | cut -d= -f2-)
+  EXISTING_JWT=$(grep -E '^pl\.core\.jwt=' "$CUSTOM_DIR/application.properties" | cut -d= -f2- | tr -d '\r')
 fi
 
 EXISTING_JWT_TYPE=""

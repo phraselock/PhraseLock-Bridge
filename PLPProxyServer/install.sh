@@ -18,6 +18,14 @@ PKI_CONF="$PKI_SERVER_DIR/pki.conf.txt"
 
 DIALOG=$(command -v whiptail || command -v dialog)
 
+# Strips a trailing \r some terminals/whiptail leave on captured Enter-
+# confirmed input: "$()" strips trailing \n but not a \r right before it,
+# so "value\r\n" survives capture as "value\r" — a real case hit in
+# plp-backend's installer, it broke a generated nginx line with an
+# invisible embedded CR. Applied to every dialog-captured value below, and
+# to values read back out of already-written config files.
+strip_cr() { printf '%s' "${1%$'\r'}"; }
+
 # README.txt (how to issue client certificates) goes to its permanent home
 # right away, before anything below can fail — /tmp (where this installer
 # was extracted) is only a staging area, /etc/frp is where this server's
@@ -32,7 +40,7 @@ FRP_HTTP_PORT=10000
 FRP_HTTPS_PORT=30000
 FRP_MQTT_PORT=60000
 
-CURRENT_DNAME=$(grep "^[[:space:]]*dname[[:space:]]*=" "$PKI_CONF" | head -n1 | cut -d'=' -f2- | xargs)
+CURRENT_DNAME=$(grep "^[[:space:]]*dname[[:space:]]*=" "$PKI_CONF" | head -n1 | cut -d'=' -f2- | tr -d '\r' | xargs)
 PLACEHOLDER="[Enter a valid domain or IP address]"
 
 while :; do
@@ -46,6 +54,7 @@ while :; do
     echo "Aborted (Cancel/Esc)." >&2
     exit 1
   fi
+  DNAME=$(strip_cr "$DNAME")
   if [[ -z "$DNAME" || "$DNAME" == "$PLACEHOLDER" ]]; then
     "$DIALOG" --title "PLP Proxy Server Setup" --msgbox \
       "Please enter an actual domain name or IP address, not the placeholder." 8 60
@@ -217,6 +226,7 @@ if ! CLIENT_NAME=$("$DIALOG" --title "PLP Proxy Server Setup" --inputbox \
   echo "Aborted (Cancel/Esc)." >&2
   exit 1
 fi
+CLIENT_NAME=$(strip_cr "$CLIENT_NAME")
 
 CLIENT_OUT_DIR="$PKI_SERVER_DIR/${CLIENT_NAME}.FRP"
 if [[ -d "$CLIENT_OUT_DIR" ]]; then

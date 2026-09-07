@@ -6,6 +6,14 @@ CERTS_IN_DIR="$SCRIPT_DIR/certs-in"
 
 DIALOG=$(command -v whiptail || command -v dialog)
 
+# Strips a trailing \r some terminals/whiptail leave on captured Enter-
+# confirmed input: "$()" strips trailing \n but not a \r right before it,
+# so "value\r\n" survives capture as "value\r" — a real case hit in
+# plp-backend's installer, it broke a generated nginx line with an
+# invisible embedded CR. Applied to every dialog-captured value below, and
+# to values read back out of already-written config files.
+strip_cr() { printf '%s' "${1%$'\r'}"; }
+
 # Single-tenant setup, same fixed ports as PLPProxyServer — must match
 # exactly, since they're not negotiated, just hardcoded constants on
 # both ends.
@@ -17,8 +25,8 @@ FRP_MQTT_PORT=60000
 
 CONF_FILE=/etc/frp/frpc.toml
 if [[ -f "$CONF_FILE" ]]; then
-  CURRENT_SERVER_ADDR=$(grep '^serverAddr' "$CONF_FILE" | head -n1 | sed -E 's/^serverAddr[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/')
-  CURRENT_TOKEN=$(grep '^auth\.token' "$CONF_FILE" | head -n1 | sed -E 's/^auth\.token[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/')
+  CURRENT_SERVER_ADDR=$(grep '^serverAddr' "$CONF_FILE" | head -n1 | sed -E 's/^serverAddr[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/' | tr -d '\r')
+  CURRENT_TOKEN=$(grep '^auth\.token' "$CONF_FILE" | head -n1 | sed -E 's/^auth\.token[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/' | tr -d '\r')
 else
   CURRENT_SERVER_ADDR=""
   CURRENT_TOKEN=""
@@ -34,6 +42,7 @@ if ! SERVER_ADDR=$("$DIALOG" --title "PLP Proxy Client Setup" --inputbox \
   echo "Aborted (Cancel/Esc)." >&2
   exit 1
 fi
+SERVER_ADDR=$(strip_cr "$SERVER_ADDR")
 
 if ! AUTH_TOKEN=$("$DIALOG" --title "PLP Proxy Client Setup" --inputbox \
   "auth.token, from the proxy server's install summary:" 12 70 \
@@ -41,6 +50,7 @@ if ! AUTH_TOKEN=$("$DIALOG" --title "PLP Proxy Client Setup" --inputbox \
   echo "Aborted (Cancel/Esc)." >&2
   exit 1
 fi
+AUTH_TOKEN=$(strip_cr "$AUTH_TOKEN")
 
 if [[ -z "$SERVER_ADDR" || -z "$AUTH_TOKEN" ]]; then
   "$DIALOG" --title "PLP Proxy Client Setup" --msgbox \
