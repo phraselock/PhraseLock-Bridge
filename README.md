@@ -345,6 +345,35 @@ certificate (Windows: "Local Machine" store — the client runs as a
 service with admin rights, available at the lock screen before login;
 Mac: "login" keychain).
 
+### How plp-admin gets installed
+
+plp-admin has its own installer. PLPServer runs it as the last step, so a customer sees one installation, not two:
+
+```mermaid
+flowchart TD
+    B["bootstrap install.sh (repo root)"] -->|downloads latest release tarball| P["PLPServer/install.sh"]
+    P --> I["1. CA, Let's Encrypt, nginx, mosquitto,<br/>MQTT login"]
+    I -->|"2. asks GitHub for the latest<br/>plp-admin release, fetches its<br/>install.sh from that release tag"| A["plp-admin install.sh"]
+    P -.->|"passes the MQTT URL, user and<br/>password as dialog defaults"| A
+    A --> R["3. Java 21, user 'phraselock', JAR from the release,<br/>CA key links, config files, nginx /admin/ block,<br/>systemd unit 'plp-admin'"]
+```
+
+1. PLPServer sets up everything the service sits on: CAs, certificates, nginx, mosquitto, and the MQTT login.
+2. At the end it looks up the latest [plp-admin release](https://github.com/phraselock/plp-admin/releases/latest),
+   downloads `install.sh` from that **release tag** (not from `main`, so a later commit cannot change what a
+   given PhraseLock-Bridge release installs) and runs it. The MQTT URL, user and password just created are passed
+   as defaults (`PLP_ADMIN_MQTT_URL`, `PLP_ADMIN_MQTT_USER`, `PLP_ADMIN_MQTT_PASS`).
+3. The plp-admin installer asks its own questions (port, KeePass, plp-core JWT, MQTT, ...; the MQTT dialogs
+   come pre-filled), installs Java 21 and the service user, downloads the JAR from the same release, links the CA
+   keys from `pki-scripts` into `certs/CA/service`, writes the configuration, adds the `/admin/` block to nginx and
+   starts the `plp-admin` service. An older `plp-custom`/`plp-backend` service is stopped and disabled after asking;
+   nothing is deleted.
+4. nginx then forwards `/api/…` (`phraselock.conf`) and `/admin/` (`plp-admin.conf`) to plp-admin on port 7070.
+
+plp-admin can also be installed or updated on its own with the one-liner in the
+[plp-admin README](https://github.com/phraselock/plp-admin#installation-debian--raspberry-pi-os). The code for step 2
+is the "plp-admin" block near the end of `PLPServer/install.sh`.
+
 > [!WARNING]
 > **plp-admin needs a `pl.core.jwt` from plp-core.** The plp-admin setup
 > dialog (run at the end of this install) asks for it; it may stay empty,
