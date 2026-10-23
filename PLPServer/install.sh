@@ -140,7 +140,7 @@ fi
 # No make_server.sh call here anymore — the server's TLS certificate (nginx
 # + mosquitto) now comes from Let's Encrypt further down, not from this CA.
 # This CA's only remaining job is client certificates (below, and the
-# dynamic ones plp-custom issues at runtime).
+# dynamic ones plp-admin issues at runtime).
 
 # MQTT client CA (mosquitto's trust anchor for dynamically issued client
 # certificates) — independent of the clients-api CA above, see the
@@ -469,129 +469,39 @@ systemctl restart mosquitto
 
 MOSQUITTO_STATUS="mosquitto installed and restarted, listening on 8883 for '${DNAME}'."
 
-# --- plp-custom ------------------------------------------------------------
+# --- plp-admin -------------------------------------------------------------
 
-# plp-custom is built with --release 21 (same requirement will apply to
-# plp-backend once that's added here) — install a JRE if none is present or
-# the one present is too old. A headless JRE is enough; running a jar
-# doesn't need the full JDK or any desktop/font libraries.
-JAVA_MAJOR=0
-if command -v java >/dev/null 2>&1; then
-  JAVA_MAJOR=$(java -version 2>&1 | head -1 | grep -oE '"[0-9]+' | tr -d '"')
-fi
-
-if [[ "$JAVA_MAJOR" -lt 21 ]]; then
-  DEBIAN_FRONTEND=noninteractive apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-21-jre-headless
-  JAVA_STATUS="OpenJDK 21 (headless JRE) installed."
-else
-  JAVA_STATUS="Java ${JAVA_MAJOR} already present — meets the minimum of 21."
-fi
-
-id -u phraselock >/dev/null 2>&1 || useradd -m -s /usr/sbin/nologin phraselock
-
-CUSTOM_SRC_DIR="$SCRIPT_DIR/opt/phraselock/custom"
-CUSTOM_DIR=/opt/phraselock/custom
-mkdir -p "$CUSTOM_DIR/certs/CA"
-
-# Versioned jar + generic symlink, so the systemd unit (which always starts
-# "plp-custom.jar") doesn't need to change when the version changes.
-CUSTOM_JAR=$(basename "$(ls "$CUSTOM_SRC_DIR"/plp-custom-*.jar)")
-cp "$CUSTOM_SRC_DIR/$CUSTOM_JAR" "$CUSTOM_DIR/$CUSTOM_JAR"
-ln -sf "$CUSTOM_JAR" "$CUSTOM_DIR/plp-custom.jar"
-
-# plp-core JWT bearer token — the one value in application.properties that's
-# specific to this customer. The public key (pl.core.jwt.ec.pub.x/y) and
-# pl.core.url are pinned in the template and must not change here.
+# plp-admin (device API + admin UI, port 7070 behind nginx) replaces plp-custom
+# and plp-backend. It has its own installer, so there is one source of truth:
+# Java 21, the "phraselock" user, the JAR of the latest release, the CA key
+# links, the plp-core JWT dialog (may stay empty), the service and the nginx
+# /admin/ include are all handled there. An old plp-custom/plp-backend
+# service is stopped and disabled by that installer (after asking).
 #
-# Auto-fetched from plp-core's token API on every run, since these tokens
-# are short-lived (a few days) by design. A longer-lived token is only
-# issued to customers who contact PhraseLock directly — once one of those
-# is in place (detected by its JWT "type" claim not being "temporary"),
-# it's left untouched instead of being silently overwritten by a fresh
-# short-lived one on a repeat install.
+# The installer is fetched from the latest release TAG, not from main, so a
+# later commit on main cannot silently change what this tarball installs.
+# The MQTT login created above is passed on as defaults for its dialogs.
 command -v curl >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl; }
 
-base64url_decode() {
-  local seg="$1"
-  seg="${seg//-/+}"; seg="${seg//_//}"
-  case $(( ${#seg} % 4 )) in
-    2) seg="${seg}==" ;;
-    3) seg="${seg}=" ;;
-  esac
-  echo "$seg" | base64 -d 2>/dev/null
-}
+ADMIN_REPO="phraselock/plp-admin"
+ADMIN_TAG=$(curl -fsSL "https://api.github.com/repos/${ADMIN_REPO}/releases/latest" 2>/dev/null \
+  | grep '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
+ADMIN_INSTALLER=$(mktemp)
 
-EXISTING_JWT=""
-if [[ -f "$CUSTOM_DIR/application.properties" ]]; then
-  EXISTING_JWT=$(grep -E '^pl\.core\.jwt=' "$CUSTOM_DIR/application.properties" | cut -d= -f2- | tr -d '\r')
-fi
-
-EXISTING_JWT_TYPE=""
-if [[ -n "$EXISTING_JWT" && "$EXISTING_JWT" != "<bearer-token>" ]]; then
-  EXISTING_JWT_TYPE=$(base64url_decode "$(echo "$EXISTING_JWT" | cut -d. -f2)" \
-    | (grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' || true) | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
-fi
-
-if [[ -n "$EXISTING_JWT" && "$EXISTING_JWT" != "<bearer-token>" && "$EXISTING_JWT_TYPE" != "temporary" ]]; then
-  PL_CORE_JWT="$EXISTING_JWT"
-  JWT_STATUS="plp-core bearer token already set (not a temporary one) — left unchanged."
-  JWT_NOTE="unchanged from when it was first set — not re-displayed here"
-else
-  JWT_RESPONSE=$(curl -fsS "https://phraselock.net/api/plp/v1/validate/getjwt") || JWT_RESPONSE=""
-  PL_CORE_JWT=$(echo "$JWT_RESPONSE" | grep -o '"jwttoken"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
-  JWT_DAYS=$(echo "$JWT_RESPONSE" | grep -o '"days"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')
-
-  if [[ -z "$PL_CORE_JWT" ]]; then
-    "$DIALOG" --title "PLP Server Setup" --msgbox \
-"Could not fetch a bearer token from plp-core
-(https://phraselock.net/api/plp/v1/validate/getjwt).
-Check this server's internet connection and re-run install.sh." 10 70
-    exit 1
+if [[ -n "$ADMIN_TAG" ]] \
+   && curl -fsSL "https://raw.githubusercontent.com/${ADMIN_REPO}/${ADMIN_TAG}/install.sh" -o "$ADMIN_INSTALLER"; then
+  if PLP_ADMIN_MQTT_URL="ssl://localhost:${MQTT_PORT}" \
+     PLP_ADMIN_MQTT_USER="$MQTT_USER" \
+     PLP_ADMIN_MQTT_PASS="${MQTT_PASS:-}" \
+     bash "$ADMIN_INSTALLER"; then
+    ADMIN_STATUS="plp-admin ${ADMIN_TAG} installed (see /opt/phraselock/admin/admin-setup.txt)."
+  else
+    ADMIN_STATUS="WARNING: the plp-admin installer did not finish — re-run PLPServer's install.sh or the plp-admin installer."
   fi
-  JWT_STATUS="plp-core bearer token fetched automatically (valid ~${JWT_DAYS:-a few} days — contact PhraseLock for a longer-lived one)."
-  JWT_NOTE="$PL_CORE_JWT"
+else
+  ADMIN_STATUS="WARNING: could not fetch the plp-admin installer from GitHub. Check this server's internet connection and re-run install.sh."
 fi
-
-cp "$CUSTOM_SRC_DIR/application.properties" "$CUSTOM_DIR/application.properties"
-sed -i "s|^pl\.core\.jwt=.*|pl.core.jwt=${PL_CORE_JWT}|" "$CUSTOM_DIR/application.properties"
-
-# CA private keys plp-custom needs to issue certificates at runtime: the
-# client CA's key (bootstrap client certs; this CA no longer signs a server
-# certificate, see the pki.conf.txt comment) and the MQTT CA's key+cert
-# (dynamically issued MQTT client certs) — same set as on hmx.
-#
-# Symlinked, not copied: unlike the Let's Encrypt server cert (kept in sync
-# automatically by the renewal deploy-hooks), a copy here has no re-sync
-# mechanism at all — if this CA ever changes and someone forgets to
-# re-copy, the resulting mismatch is invisible from the filenames alone
-# and painful to debug. A symlink means plp-custom always sees whatever is
-# actually under pki-scripts, nothing to remember.
-#
-# make_ca.sh leaves the CA key root:root 600 — group-readable by
-# "phraselock" here so plp-custom (which runs as that unprivileged user)
-# can read it through the symlink without loosening access to "world".
-chgrp phraselock "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key"
-chmod 640 "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key"
-
-ln -sf "$PKI_CLIENTS_API_DIR/CA/ca.${DNAME}.key" "$CUSTOM_DIR/certs/CA/"
-ln -sf "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.key" "$PKI_CLIENTS_MQTT_DIR/CA/ca.${MQTT_DNAME}.pem" "$CUSTOM_DIR/certs/CA/"
-
-# -R here does NOT dereference symlinks during traversal (that's the
-# default without -H/-L), so this only touches the symlinks themselves
-# (irrelevant on Linux — access control uses the target's own permissions)
-# and genuinely-owned files under $CUSTOM_DIR, never the CA keys' actual
-# root:phraselock 640 ownership set above.
-chown -R phraselock:phraselock "$CUSTOM_DIR"
-
-cp "$CUSTOM_SRC_DIR/plp-custom.service" "$CUSTOM_DIR/plp-custom.service"
-ln -sf "$CUSTOM_DIR/plp-custom.service" /etc/systemd/system/plp-custom.service
-
-systemctl daemon-reload
-systemctl enable plp-custom >/dev/null 2>&1 || true
-systemctl restart plp-custom
-
-CUSTOM_STATUS="plp-custom installed (${CUSTOM_JAR}) and restarted, listening on 127.0.0.1:7070 behind nginx."
+rm -f "$ADMIN_INSTALLER"
 
 # Overwrite the generic README/credentials copied earlier with ones resolved
 # to this server's actual values. Kept as two separate files on purpose —
@@ -606,7 +516,6 @@ sed -e "s|__CLIENT_P12_PATH__|${CLIENT_P12_PATH}|g" \
 sed -e "s|__P12_PASSWORD__|${P12_PASSWORD_NOTE}|g" \
     -e "s|__MQTT_USER__|${MQTT_USER}|g" \
     -e "s|__MQTT_PASSWORD__|${MQTT_PASSWORD_NOTE}|g" \
-    -e "s|__PL_CORE_JWT__|${JWT_NOTE}|g" \
     "$SCRIPT_DIR/credentials.txt" > /opt/phraselock/credentials.txt
 chmod 600 /opt/phraselock/credentials.txt
 
@@ -625,9 +534,7 @@ ${NGINX_STATUS}
 ${MOSQUITTO_STATUS}
 ${MQTT_PASSWD_STATUS}
 
-${JAVA_STATUS}
-${CUSTOM_STATUS}
-${JWT_STATUS}
+${ADMIN_STATUS}
 
 See /opt/phraselock/README.txt for how to import the client certificate,
 and /opt/phraselock/credentials.txt for its password." 28 78
@@ -650,5 +557,6 @@ manual steps. Both are explained in /opt/phraselock/README.txt.
 1) Import the client certificate (.p12) on any PC/Mac that needs
    API access. Path, password and store-location all matter.
 
-2) The plp-core token just installed is TEMPORARY and WILL expire.
-   Request a permanent one from PhraseLock." 16 74
+2) plp-admin needs a plp-core JWT, otherwise the certificate API
+   refuses requests. Request one from PhraseLock and enter it as
+   pl.core.jwt in /opt/phraselock/admin/application.properties." 16 74

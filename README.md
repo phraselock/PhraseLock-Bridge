@@ -119,12 +119,12 @@ certificate/key never has to exist twice.
 │           ├── ca.mqtt_8883.pem
 │           ├── ca.mqtt_8883.pkcs8.key
 │           └── ca.mqtt_8883.srl
-└── custom/
-    ├── plp-custom-X.Y.jar
-    ├── plp-custom.jar → plp-custom-X.Y.jar
-    ├── application.properties
-    ├── plp-custom.service
-    └── certs/CA/
+└── admin/                           (plp-admin, installed by its own installer — see the plp-admin repo)
+    ├── plp-admin-X.Y.Z.jar
+    ├── plp-admin.jar → plp-admin-X.Y.Z.jar
+    ├── application.properties, mqtt.properties, keepass.properties
+    ├── plp-admin.service
+    └── certs/CA/service/
         ├── ca.<dname>.key → /opt/phraselock/pki-scripts/clients-api/CA/ca.<dname>.key
         ├── ca.mqtt_8883.key → /opt/phraselock/pki-scripts/clients-mqtt/CA/ca.mqtt_8883.key
         └── ca.mqtt_8883.pem → /opt/phraselock/pki-scripts/clients-mqtt/CA/ca.mqtt_8883.pem
@@ -153,7 +153,7 @@ certificate/key never has to exist twice.
 │   ├── phraselock_80.conf → /etc/nginx/sites-available/phraselock_80.conf
 │   ├── phraselock.conf → /etc/nginx/sites-available/phraselock.conf
 │   └── silent-drop.conf → /etc/nginx/sites-available/silent-drop.conf
-└── phraselock.d/                    (drop-in location blocks — written by plp-backend/plp-fido2 installers)
+└── phraselock.d/                    (drop-in location blocks — written by plp-admin/plp-fido2 installers)
 
 /etc/mosquitto/
 ├── mosquitto_8883.conf
@@ -168,7 +168,7 @@ certificate/key never has to exist twice.
 │   └── <hash>.0 → /opt/phraselock/pki-scripts/clients-mqtt/CA/ca.mqtt_8883.pem
 └── .passwd_8883
 
-/etc/systemd/system/plp-custom.service → /opt/phraselock/custom/plp-custom.service
+/etc/systemd/system/plp-admin.service → /opt/phraselock/admin/plp-admin.service
 ```
 
 Note what's *not* here: an `/etc/nginx/certs/<dname>.crt`-style self-signed server certificate. `pki-scripts/clients-api/` still ships `make_server.sh` (for a fully self-signed, no-public-DNS fallback — see "Certificate flow" below), but `install.sh` no longer calls it; nginx's and mosquitto's `server.crt`/`server.key` come exclusively from Let's Encrypt now.
@@ -257,7 +257,7 @@ flowchart TD
 
     subgraph SM["PLPServer/pki-scripts/clients-mqtt"]
         MCA[MQTT client CA]
-        MCA --> MCert["MQTT client certs<br/>(issued dynamically by plp-custom)"]
+        MCA --> MCert["MQTT client certs<br/>(issued dynamically by plp-admin)"]
     end
 
     subgraph P["PLPProxyServer/pki-scripts/server"]
@@ -315,7 +315,7 @@ Installs the customer-facing stack: nginx (mTLS-protected API reverse
 proxy) and mosquitto (MQTT broker with client-certificate trust store),
 both getting their server TLS certificate from Let's Encrypt via `certbot`
 (auto-renewing, systemd timer + deploy hooks — see "Certificate flow"
-above), plus `plp-custom` (Java 21 service, installed as a systemd unit).
+above), plus [`plp-admin`](https://github.com/phraselock/plp-admin) (Java 21 service: device API and admin UI, installed as a systemd unit by its own installer, which PLPServer runs at the end).
 Also generates this device's own client-certificate PKI: a CA for API
 access (with a bootstrap `.p12` for a PC/Mac) and a separate CA for MQTT
 broker access — kept apart on purpose, so a certificate for one can never
@@ -323,7 +323,7 @@ authenticate as the other.
 
 ```mermaid
 flowchart TD
-    A[API / app traffic] -->|mTLS :443| N[nginx] --> C[plp-custom]
+    A[API / app traffic] -->|mTLS :443| N[nginx] --> C[plp-admin]
     M[MQTT traffic] -->|mTLS :8883| Q[mosquitto]
 
     style A fill:#dbeafe,stroke:#2563eb
@@ -346,14 +346,12 @@ service with admin rights, available at the lock screen before login;
 Mac: "login" keychain).
 
 > [!WARNING]
-> **The `pl.core.jwt` token install.sh fetches automatically is
-> temporary** — valid only a few days, just enough to get this install
-> working right away. For a backend you intend to keep running, you must
-> separately request a proper, long-lived token from PhraseLock (free, but
-> not self-service — you have to ask for it) and replace `pl.core.jwt` in
-> `/opt/phraselock/custom/application.properties` with it, then
-> `systemctl restart plp-custom`. See `/opt/phraselock/README.txt` for the
-> full instructions.
+> **plp-admin needs a `pl.core.jwt` from plp-core.** The plp-admin setup
+> dialog (run at the end of this install) asks for it; it may stay empty,
+> but then the certificate API refuses requests. A JWT is free, but not
+> self-service — you have to request it from PhraseLock. Enter it as
+> `pl.core.jwt` in `/opt/phraselock/admin/application.properties`, then
+> `systemctl restart plp-admin`. See `/opt/phraselock/README.txt`.
 
 > [!WARNING]
 > **Import the bootstrap client `.p12` to the exact store/location**

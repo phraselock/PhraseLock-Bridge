@@ -25,13 +25,38 @@ fi
 
 DIALOG=$(command -v whiptail || command -v dialog)
 
-# --- plp-custom --------------------------------------------------------
+# --- plp-custom (older installations) ----------------------------------
 
 systemctl stop plp-custom 2>/dev/null || true
 systemctl disable plp-custom >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/plp-custom.service
 systemctl daemon-reload
 rm -rf /opt/phraselock/custom
+
+# --- plp-admin -----------------------------------------------------------
+# Asked, not removed unconditionally: /opt/phraselock/admin holds data that
+# cannot be recreated (KeePass users, issued SmartCard certificates, peer
+# config, plp-admin's own configuration).
+
+ADMIN_STATUS="plp-admin not found — nothing to remove."
+if [[ -d /opt/phraselock/admin ]]; then
+  if "$DIALOG" --title "PLP Server Uninstall" --yesno \
+"Also remove plp-admin and ALL its data?
+
+  /opt/phraselock/admin
+  (configuration, databases, issued SmartCard certificates)
+
+This cannot be undone." 14 70; then
+    systemctl stop plp-admin 2>/dev/null || true
+    systemctl disable plp-admin >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/plp-admin.service /etc/nginx/phraselock.d/plp-admin.conf
+    systemctl daemon-reload
+    rm -rf /opt/phraselock/admin
+    ADMIN_STATUS="plp-admin removed."
+  else
+    ADMIN_STATUS="plp-admin kept at /opt/phraselock/admin (still running)."
+  fi
+fi
 
 # --- mosquitto -----------------------------------------------------------
 
@@ -134,6 +159,7 @@ fi
 "Uninstall complete.
 
 plp-custom, mosquitto and nginx configuration/certs removed.
+${ADMIN_STATUS}
 ${PACKAGE_STATUS}
 ${AUTOREMOVE_STATUS}
 

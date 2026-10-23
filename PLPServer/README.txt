@@ -3,24 +3,22 @@ PLPServer — Client Certificate Setup
 
 install.sh set up this server's own CA (used for client certificates only),
 a Let's Encrypt server certificate (auto-renewing), nginx, mosquitto and
-plp-custom — and, as part of that, issued the one bootstrap client
+plp-admin (its own installer ran at the end) — and, as part of that, issued the one bootstrap client
 certificate needed to access this server's API (phraselock.conf, mTLS on
 port 443).
 
 ============================================================
-!! ACTION REQUIRED: plp-core bearer token (application.properties) !!
+!! ACTION REQUIRED: plp-core JWT (application.properties) !!
 ============================================================
-install.sh auto-fetched a TEMPORARY token (valid only a few days) into
+plp-admin needs a JWT from plp-core. If you left it empty in the plp-admin
+setup dialog, the certificate API refuses requests until one is set. A JWT
+is free, but not self-service — you have to request it from PhraseLock.
+Enter it as
 
-    /opt/phraselock/custom/application.properties
+    /opt/phraselock/admin/application.properties
     pl.core.jwt=...
 
-so this install works right away — but that token WILL expire, and
-plp-custom will stop working when it does. For a backend you intend to
-keep running, you must separately request a proper, long-lived token from
-PhraseLock (free, but not self-service — you have to ask for it) and
-replace the pl.core.jwt value above with it, then restart plp-custom
-(systemctl restart plp-custom).
+and restart plp-admin (systemctl restart plp-admin), or re-run install.sh.
 
 The client certificate bundle:
 
@@ -70,6 +68,6 @@ MQTT broker login:
   Password: see credentials.txt next to this file.
 
 Everything else this install produced (client CA, MQTT CA, Let's Encrypt
-server certificate, nginx, mosquitto, plp-custom) is already wired up
+server certificate, nginx, mosquitto, plp-admin) is already wired up
 automatically, including certificate auto-renewal — no further
 manual steps needed beyond this certificate import.
