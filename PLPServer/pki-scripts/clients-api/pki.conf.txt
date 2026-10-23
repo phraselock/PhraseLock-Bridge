@@ -13,7 +13,7 @@
 #
 # This directory is named "clients-api" (not "server") because that's all
 # this CA does now: it signs the mTLS client certificates used for API
-# access (the bootstrap .p12 here, plus the ones plp-custom issues
+# access (the bootstrap .p12 here, plus the ones plp-admin issues
 # dynamically at runtime) — it no longer signs this server's own TLS
 # certificate. That one now comes from Let's Encrypt (see install.sh),
 # because clients (notably iOS 26+) stopped accepting self-signed server

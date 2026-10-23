@@ -1,10 +1,9 @@
 # Build artifacts — published as GitHub Release assets, not tracked here.
 *.tar.xz
 
-# Build output of the separate plp-custom project, not source of this repo.
-# Drop the current plp-custom-*.jar in here manually before running
-# build-tars.sh — same pattern as certs-in/, a required input this repo
-# doesn't produce itself.
+# Leftover jars of the former plp-custom project. plp-custom has been replaced by
+# plp-admin, which PLPServer's installer downloads from GitHub, so nothing is
+# bundled here anymore; a stray jar in this folder must not end up in the tarball.
 PLPServer/opt/phraselock/custom/*.jar
 
 # macOS cruft
